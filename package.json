@@ -1,0 +1,12 @@
+{
+  "name": "team-walkers-rsvp",
+  "version": "1.0.0",
+  "description": "Team Walkers Ganesh Chaturthi 2026 RSVP Microsite",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": ["rsvp", "ganesh-chaturthi", "team-walkers"],
+  "author": "Team Walkers",
+  "license": "ISC"
+}
