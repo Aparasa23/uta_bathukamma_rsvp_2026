@@ -31,11 +31,58 @@ const BATHUKAMMA_CONFIG = {
 /**
  * Main Web App Entrypoint
  */
+/**
+ * Main Web App Entrypoint & REST API endpoint for Vercel / External Web Hosting
+ */
 function doGet(e) {
+  if (e && e.parameter && e.parameter.action) {
+    return handleApiRequest(e.parameter);
+  }
   return HtmlService.createHtmlOutputFromFile('Bathukamma_Index')
     .setTitle('Bathukamma 2026 - UTA Member RSVP & Admin Portal')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
     .addMetaTag('viewport', 'width=device-width, initial-scale=1');
+}
+
+function doPost(e) {
+  let params = {};
+  if (e && e.parameter && e.parameter.action) {
+    params = e.parameter;
+  } else if (e && e.postData && e.postData.contents) {
+    try {
+      params = JSON.parse(e.postData.contents);
+    } catch(err) {
+      params = e.parameter || {};
+    }
+  } else if (e && e.parameter) {
+    params = e.parameter;
+  }
+  return handleApiRequest(params);
+}
+
+function handleApiRequest(params) {
+  const action = params.action;
+  let result = { success: false, message: 'Invalid action: ' + action };
+
+  try {
+    if (action === 'verifyMemberAndIssueRSVP' || action === 'verify') {
+      const query = params.query || params.q || '';
+      result = verifyMemberAndIssueRSVP(query);
+    } else if (action === 'getAdminDashboardData' || action === 'admin') {
+      const pin = params.pin || params.password || '';
+      result = getAdminDashboardData(pin);
+    } else if (action === 'sendEmailTicketToUser' || action === 'sendEmail') {
+      const ticketCode = params.ticketCode || '';
+      const memberName = params.memberName || '';
+      const email = params.email || '';
+      result = sendEmailTicketToUser(ticketCode, memberName, email);
+    }
+  } catch (error) {
+    result = { success: false, message: error.toString() };
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(result))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 /**

@@ -676,8 +676,137 @@
     </div>
   </div>
 
+  
   <script>
+    // Polyfill google.script.run for Vercel & Standalone Hosting
+    if (typeof google === 'undefined' || !google.script || !google.script.run) {
+      window.google = window.google || {};
+      window.google.script = window.google.script || {};
+
+      window.google.script.run = (function() {
+        function getCleanGasUrl() {
+          const urlParams = new URLSearchParams(window.location.search);
+          let url = urlParams.get('gas_url') || 
+                    localStorage.getItem('GAS_WEB_APP_URL') || 
+                    window.GAS_WEB_APP_URL || 
+                    '';
+          return url.trim();
+        }
+
+        function promptForGasUrl() {
+          const input = prompt(
+            '⚠️ Apps Script Web App URL required for Vercel Connection:\n\n' +
+            'Please enter your Google Apps Script Web App URL (ending in /exec):'
+          );
+          if (input && input.trim()) {
+            const clean = input.trim();
+            localStorage.setItem('GAS_WEB_APP_URL', clean);
+            window.GAS_WEB_APP_URL = clean;
+            return clean;
+          }
+          return null;
+        }
+
+        function executeApiCall(action, params, onSuccess, onFailure) {
+          let gasUrl = getCleanGasUrl();
+          if (!gasUrl) {
+            gasUrl = promptForGasUrl();
+            if (!gasUrl) {
+              if (onFailure) onFailure(new Error('Google Apps Script URL is required.'));
+              return;
+            }
+          }
+
+          const queryParts = ['action=' + encodeURIComponent(action)];
+          for (const key in params) {
+            if (params.hasOwnProperty(key)) {
+              queryParts.push(encodeURIComponent(key) + '=' + encodeURIComponent(params[key]));
+            }
+          }
+
+          const requestUrl = gasUrl + (gasUrl.includes('?') ? '&' : '?') + queryParts.join('&');
+
+          fetch(requestUrl, {
+            method: 'GET',
+            mode: 'cors'
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (onSuccess) onSuccess(data);
+          })
+          .catch(err => {
+            console.warn('API GET error, trying POST fallback...', err);
+            fetch(gasUrl, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: queryParts.join('&')
+            })
+            .then(res => res.json())
+            .then(data => {
+              if (onSuccess) onSuccess(data);
+            })
+            .catch(err2 => {
+              console.error('API POST failed:', err2);
+              if (onFailure) onFailure(err2);
+            });
+          });
+        }
+
+        function createRunner(onSuccess, onFailure) {
+          return {
+            verifyMemberAndIssueRSVP: function(query) {
+              executeApiCall('verifyMemberAndIssueRSVP', { query: query }, onSuccess, onFailure);
+            },
+            sendEmailTicketToUser: function(ticketCode, memberName, email) {
+              executeApiCall('sendEmailTicketToUser', { ticketCode: ticketCode, memberName: memberName, email: email }, onSuccess, onFailure);
+            },
+            getAdminDashboardData: function(pin) {
+              executeApiCall('getAdminDashboardData', { pin: pin }, onSuccess, onFailure);
+            }
+          };
+        }
+
+        return {
+          withSuccessHandler: function(onSuccess) {
+            const self = this;
+            return {
+              withFailureHandler: function(onFailure) {
+                return createRunner(onSuccess, onFailure);
+              },
+              verifyMemberAndIssueRSVP: function(query) {
+                executeApiCall('verifyMemberAndIssueRSVP', { query: query }, onSuccess, null);
+              },
+              sendEmailTicketToUser: function(ticketCode, memberName, email) {
+                executeApiCall('sendEmailTicketToUser', { ticketCode: ticketCode, memberName: memberName, email: email }, onSuccess, null);
+              },
+              getAdminDashboardData: function(pin) {
+                executeApiCall('getAdminDashboardData', { pin: pin }, onSuccess, null);
+              }
+            };
+          },
+          withFailureHandler: function(onFailure) {
+            const self = this;
+            return {
+              withSuccessHandler: function(onSuccess) {
+                return createRunner(onSuccess, onFailure);
+              },
+              verifyMemberAndIssueRSVP: function(query) {
+                executeApiCall('verifyMemberAndIssueRSVP', { query: query }, null, onFailure);
+              },
+              sendEmailTicketToUser: function(ticketCode, memberName, email) {
+                executeApiCall('sendEmailTicketToUser', { ticketCode: ticketCode, memberName: memberName, email: email }, null, onFailure);
+              },
+              getAdminDashboardData: function(pin) {
+                executeApiCall('getAdminDashboardData', { pin: pin }, null, onFailure);
+              }
+            };
+          }
+        };
+      })();
+    }
+
     let currentAdminRows = [];
+
     let authenticatedAdminPin = '';
 
     // Secret Admin Triggers
