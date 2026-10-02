@@ -761,6 +761,7 @@
                 <th>Category</th>
                 <th>Email / Identifier</th>
                 <th>Status</th>
+                <th style="text-align:center;">Venue Check-In</th>
               </tr>
             </thead>
             <tbody id="adminTableBody">
@@ -870,6 +871,9 @@
             },
             clearRsvpLogTab: function(pin) {
               executeApiCall('clearRsvpLogTab', { pin: pin }, onSuccess, onFailure);
+            },
+            checkInMemberTicket: function(ticketCode, pin) {
+              executeApiCall('checkInMemberTicket', { ticketCode: ticketCode, pin: pin }, onSuccess, onFailure);
             }
           };
         }
@@ -1276,6 +1280,7 @@
       document.getElementById('kpiAttendingCount').textContent = res.totalAttending || res.totalIssued || 0;
       document.getElementById('kpiAdultsCount').textContent = res.totalAdults || 0;
       document.getElementById('kpiChildrenCount').textContent = res.totalChildren || 0;
+      document.getElementById('kpiCheckedInCount').textContent = (res.totalCheckedInGuests || 0) + ' / ' + (res.totalAttending || 0);
 
       populateAdminTable(currentAdminRows);
     }
@@ -1307,7 +1312,72 @@
       tbody.innerHTML = html;
     }
 
-    function filterAdminTable() {
+        function executeFastCheckIn() {
+      const input = document.getElementById("checkInCodeInput");
+      const msg = document.getElementById("checkInAlertMsg");
+      const code = input ? input.value.trim() : "";
+
+      if (!code) {
+        msg.style.color = "#ef4444";
+        msg.textContent = "Please scan or enter a Ticket Code, Member Name, or Email.";
+        return;
+      }
+
+      msg.style.color = "#fbbf24";
+      msg.textContent = "🔄 Searching & Checking-In...";
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            msg.style.color = res.isUndo ? "#fbbf24" : "#10b981";
+            msg.textContent = "🎉 " + res.message;
+            if (input) input.value = "";
+            fetchAdminData();
+          } else {
+            msg.style.color = "#ef4444";
+            msg.textContent = "⚠️ " + (res.message || "Check-in failed.");
+          }
+        })
+        .withFailureHandler(function(err) {
+          msg.style.color = "#ef4444";
+          msg.textContent = "⚠️ Error executing check-in: " + (err.message || "Connection error");
+        })
+        .checkInMemberTicket(code, authenticatedAdminPin);
+    }
+
+    function toggleCheckIn(ticketCode) {
+      if (!authenticatedAdminPin || !ticketCode) return;
+      const msg = document.getElementById("checkInAlertMsg");
+      if (msg) {
+        msg.style.color = "#fbbf24";
+        msg.textContent = "🔄 Updating check-in status for " + ticketCode + "...";
+      }
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (res && res.success) {
+            if (msg) {
+              msg.style.color = res.isUndo ? "#fbbf24" : "#10b981";
+              msg.textContent = "🎉 " + res.message;
+            }
+            fetchAdminData();
+          } else {
+            if (msg) {
+              msg.style.color = "#ef4444";
+              msg.textContent = "⚠️ " + (res.message || "Action failed.");
+            }
+          }
+        })
+        .withFailureHandler(function(err) {
+          if (msg) {
+            msg.style.color = "#ef4444";
+            msg.textContent = "⚠️ Error: " + (err.message || "Connection error");
+          }
+        })
+        .checkInMemberTicket(ticketCode, authenticatedAdminPin);
+    }
+
+function filterAdminTable() {
       const query = document.getElementById('adminSearchFilter').value.toLowerCase().trim();
       if (!query) {
         populateAdminTable(currentAdminRows);

@@ -69,6 +69,10 @@ function handleApiRequest(params) {
     } else if (action === "getAdminDashboardData" || action === "admin") {
       const pin = params.pin || params.password || "";
       result = getAdminDashboardData(pin);
+    } else if (action === "checkInMemberTicket" || action === "checkin") {
+      const pin = params.pin || params.password || "";
+      const code = params.ticketCode || params.code || "";
+      result = checkInMemberTicket(code, pin);
     } else if (action === "clearRsvpLogTab" || action === "clearLog") {
       const pin = params.pin || params.password || "";
       result = clearRsvpLogTab(pin);
@@ -381,9 +385,11 @@ function sendEmailTicketToUser(ticketCode, memberName, email, adults, children, 
           <p style="margin: 5px 0; font-size: 16px;"><strong>Member Name:</strong> ${memberName}</p>
           <p style="margin: 5px 0; font-size: 16px;"><strong>Membership Category:</strong> ${category}</p>
           <p style="margin: 5px 0; font-size: 16px;"><strong>Total Attending:</strong> <span style="color:#10b981; font-weight:bold;">${totalCount} Persons</span> (${adultCount} Adults, ${kidCount} Children)</p>
-          <div style="margin-top: 15px; text-align: center; background: #000000; padding: 12px; border-radius: 8px;">
-            <span style="color: #94a3b8; font-size: 12px; display: block;">TICKET CODE</span>
-            <span style="color: #fbbf24; font-size: 26px; font-weight: bold; letter-spacing: 2px;">${ticketCode}</span>
+          <div style="margin-top: 15px; text-align: center; background: #000000; padding: 16px; border-radius: 8px;">
+            <span style="color: #94a3b8; font-size: 12px; display: block; margin-bottom: 8px;">VIP EVENT ENTRY QR CODE</span>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(ticketCode)}&color=fbbf24&bcolor=000000" alt="Ticket QR Code" style="width: 140px; height: 140px; border: 2px solid #f59e0b; border-radius: 8px; margin-bottom: 8px;">
+            <span style="color: #94a3b8; font-size: 11px; display: block;">TICKET CODE</span>
+            <span style="color: #fbbf24; font-size: 24px; font-weight: bold; letter-spacing: 2px;">${ticketCode}</span>
           </div>
         </div>
         <div style="background: #0d3b2b; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 14px; line-height: 1.5;">
@@ -466,6 +472,9 @@ function getAdminDashboardData(adminPin) {
       totalAdults += adults;
       totalChildren += children;
 
+      const statusStr = String(r[r.length >= 10 ? 8 : 5] || "CONFIRMED");
+      let isCheckedIn = statusStr.startsWith("CHECKED IN");
+
       const cat = String(r[4] || "UTA Member");
       if (isFamilyMembership_(cat)) familyCount++; else singleCount++;
 
@@ -483,12 +492,23 @@ function getAdminDashboardData(adminPin) {
       });
     }
 
+    let totalCheckedInCount = 0;
+    let totalCheckedInGuests = 0;
+    rows.forEach(r => {
+      if (String(r.status || "").startsWith("CHECKED IN")) {
+        totalCheckedInCount++;
+        totalCheckedInGuests += (r.totalAttending || 1);
+      }
+    });
+
     return {
       success: true,
       totalIssued: rows.length,
       totalAttending: totalAttending,
       totalAdults: totalAdults,
       totalChildren: totalChildren,
+      totalCheckedInCount: totalCheckedInCount,
+      totalCheckedInGuests: totalCheckedInGuests,
       familyCount: familyCount,
       singleCount: singleCount,
       rows: rows.reverse()
@@ -728,5 +748,68 @@ function clearRsvpLogTab(adminPin) {
     };
   } catch (err) {
     return { success: false, message: "Error clearing RSVP log: " + err.toString() };
+  }
+}
+
+function checkInMemberTicket(ticketCode, adminPin) {
+  try {
+    const cleanPin = String(adminPin || "").trim();
+    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || "UTA2026Admin")) {
+      return { success: false, message: "Invalid Admin PIN. Access Denied." };
+    }
+
+    const cleanCode = String(ticketCode || "").trim().toUpperCase();
+    if (!cleanCode) {
+      return { success: false, message: "Ticket code is required." };
+    }
+
+    if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+      return { success: false, message: "Master Spreadsheet ID missing." };
+    }
+
+    const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+    let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
+    if (!logSheet) {
+      return { success: false, message: "RSVP Log sheet not found." };
+    }
+
+    const data = logSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return { success: false, message: "No tickets logged in system." };
+    }
+
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (row.length > 1 && String(row[1] || "").trim().toUpperCase() === cleanCode) {
+        const checkInTimeStr = formatDate_(new Date());
+        const currentStatus = String(row[8] || "");
+        let newStatus = `CHECKED IN (${checkInTimeStr})`;
+        let isUndo = false;
+
+        if (currentStatus.startsWith("CHECKED IN")) {
+          newStatus = "CONFIRMED (FREE MEMBER PASS)";
+          isUndo = true;
+        }
+
+        logSheet.getRange(i + 1, 9).setValue(newStatus);
+
+        const memberName = String(row[2] || "UTA Member");
+        const totalGuests = parseInt(row[7] || 1, 10);
+
+        return {
+          success: true,
+          isUndo: isUndo,
+          message: isUndo ? `Check-in status reset for ${memberName}.` : `Check-in successful for ${memberName} (${totalGuests} Guests)!`,
+          ticketCode: cleanCode,
+          memberName: memberName,
+          totalAttending: totalGuests,
+          status: newStatus
+        };
+      }
+    }
+
+    return { success: false, message: `Ticket code "${cleanCode}" not found in system.` };
+  } catch (err) {
+    return { success: false, message: "Check-in error: " + err.toString() };
   }
 }
