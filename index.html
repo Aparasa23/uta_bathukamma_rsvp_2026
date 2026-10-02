@@ -684,11 +684,16 @@
       window.google.script = window.google.script || {};
 
       window.google.script.run = (function() {
+        // Embedded Default Google Apps Script Deployed Web App URL
+        // Replace this string with your deployed script.google.com/macros/s/.../exec URL to make it seamless for all users!
+        let DEFAULT_GAS_URL = window.DEFAULT_GAS_URL || '';
+
         function getCleanGasUrl() {
           const urlParams = new URLSearchParams(window.location.search);
           let url = urlParams.get('gas_url') || 
                     localStorage.getItem('GAS_WEB_APP_URL') || 
                     window.GAS_WEB_APP_URL || 
+                    DEFAULT_GAS_URL || 
                     '';
           return url.trim();
         }
