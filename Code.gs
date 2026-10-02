@@ -2,7 +2,7 @@
 // Provides Member Verification, RSVP Management, Ticket Generation, Auto-Emailing & Admin Analytics
 
 const BATHUKAMMA_CONFIG = {
-  masterSpreadsheetId: "148Yp4n3Vv1aXmN6Zl5B11g3k5Q9uP_5bN_2c0eD3f8g", // Master Member Spreadsheet ID
+  masterSpreadsheetId: "1D2HD41kUJ6BC3K6_66efwNP_tOi10PTvjEC8wQI6liw", // Master Member Spreadsheet ID
   rsvpLogSheetName: "Bathukamma_RSVP_Log",                           // RSVP Log Tab Name
   adminPin: "UTA2026Admin",                                            // Admin Password
   utaAdminEmail: "utahteluguassociation@gmail.com",                  // Admin Notification Email
