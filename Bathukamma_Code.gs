@@ -19,7 +19,7 @@ const BATHUKAMMA_CONFIG = {
   rsvpLogSheetName: 'Bathukamma_RSVP_Log',
   
   // Official UTA Admin Email for notifications
-  utaAdminEmail: 'uta.events.utah@gmail.com',
+  utaAdminEmail: 'utahteluguassociation@gmail.com',
   adminPin: 'UTA2026Admin', // Admin password for web dashboard access
 
   // Official Forms Links
