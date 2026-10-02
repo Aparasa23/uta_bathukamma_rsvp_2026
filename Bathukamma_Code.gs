@@ -1,18 +1,7 @@
 /**
- * BATHUKAMMA 2026 EVENT - UTA MEMBERSHIP VERIFICATION, RSVP LOGGING, DUAL EMAIL & ADMIN DASHBOARD
- * 
- * Features:
- * 1. Multi-Year & Lifetime Membership Verification (Master Sheet: 1D2HD41kUJ6BC3K6_66efwNP_tOi10PTvjEC8wQI6liw)
- * 2. Real-Time Admin RSVP Logging & Live Admin Web App Dashboard
- * 3. Dual Email Confirmation: Sends HTML Ticket Pass to Member + Notification to UTA Admin Email.
- * 4. User Email Request Feature: Allows member to send/resend email ticket pass.
+ * BATHUKAMMA 2026 EVENT - UTA MEMBERSHIP VERIFICATION, FAMILY RSVP LOGGING, DUAL EMAIL & ADMIN DASHBOARD
  */
 
-
-/**
- * RUN THIS FUNCTION ONCE IN APPS SCRIPT EDITOR BY CLICKING '▷ Run'
- * This triggers Google's Authorization Dialog for MailApp and Spreadsheets!
- */
 function authorizeMailPermissionsTest() {
   const userEmail = Session.getActiveUser().getEmail() || BATHUKAMMA_CONFIG.utaAdminEmail;
   Logger.log("Authorizing MailApp for email: " + userEmail);
@@ -29,26 +18,17 @@ const BATHUKAMMA_CONFIG = {
   eventVenue: 'Utah Telugu Association (UTA) Event Center',
   currentActiveYear: '2026',
   
-  // Single Master Spreadsheet ID containing all year tabs & RSVP logs
   masterSpreadsheetId: '1D2HD41kUJ6BC3K6_66efwNP_tOi10PTvjEC8wQI6liw',
   rsvpLogSheetName: 'Bathukamma_RSVP_Log',
   
-  // Official UTA Admin Email for notifications
   utaAdminEmail: 'utahteluguassociation@gmail.com',
-  adminPin: 'UTA2026Admin', // Admin password for web dashboard access
+  adminPin: 'UTA2026Admin',
 
-  // Official Forms Links
   buyTicketUrl: 'https://forms.gle/rb621mkJ4FzXvSib7',
   renewMembershipUrl: 'https://forms.gle/rb621mkJ4FzXvSib7',
   joinMembershipUrl: 'https://forms.gle/rb621mkJ4FzXvSib7'
 };
 
-/**
- * Main Web App Entrypoint
- */
-/**
- * Main Web App Entrypoint & REST API endpoint for Vercel / External Web Hosting
- */
 function doGet(e) {
   if (e && e.parameter && e.parameter.action) {
     return handleApiRequest(e.parameter);
@@ -83,6 +63,8 @@ function handleApiRequest(params) {
     if (action === 'verifyMemberAndIssueRSVP' || action === 'verify') {
       const query = params.query || params.q || '';
       result = verifyMemberAndIssueRSVP(query);
+    } else if (action === 'confirmAndIssueTicket' || action === 'confirmTicket') {
+      result = confirmAndIssueTicket(params);
     } else if (action === 'getAdminDashboardData' || action === 'admin') {
       const pin = params.pin || params.password || '';
       result = getAdminDashboardData(pin);
@@ -90,7 +72,10 @@ function handleApiRequest(params) {
       const ticketCode = params.ticketCode || '';
       const memberName = params.memberName || '';
       const email = params.email || '';
-      result = sendEmailTicketToUser(ticketCode, memberName, email);
+      const adults = parseInt(params.adults || 1, 10);
+      const children = parseInt(params.children || 0, 10);
+      const category = params.category || 'UTA Member';
+      result = sendEmailTicketToUser(ticketCode, memberName, email, adults, children, category);
     }
   } catch (error) {
     result = { success: false, message: error.toString() };
@@ -100,9 +85,6 @@ function handleApiRequest(params) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-/**
- * Client API handler called by Bathukamma_Index.html
- */
 function verifyMemberAndIssueRSVP(inputQuery) {
   try {
     const res = checkMembershipStatus(inputQuery);
@@ -111,15 +93,18 @@ function verifyMemberAndIssueRSVP(inputQuery) {
     }
 
     if (res.found && res.active) {
+      const isFamily = isFamilyMembership_(res.membershipType);
       return {
         success: true,
         status: 'ACTIVE',
-        ticketCode: res.ticketCode || ('BK2026-' + Math.floor(100000 + Math.random() * 900000)),
-        emailSent: res.emailSent || false,
         data: {
+          queryInput: inputQuery,
           memberName: res.memberName || 'UTA Member',
           memberId: res.memberId || ('UTA-2026-' + Math.floor(1000 + Math.random() * 9000)),
           membershipType: res.membershipType || 'UTA Member',
+          isFamily: isFamily,
+          suggestedAdults: isFamily ? 2 : 1,
+          suggestedChildren: 0,
           email: res.email || (inputQuery.includes('@') ? inputQuery : ''),
           lastActiveYear: '2026'
         }
@@ -147,15 +132,119 @@ function verifyMemberAndIssueRSVP(inputQuery) {
   }
 }
 
-/**
- * Allows member to request/send ticket pass to a specific email address.
- */
-function sendEmailTicketToUser(ticketCode, memberName, emailAddress) {
+function isFamilyMembership_(typeStr) {
+  const str = String(typeStr || '').toLowerCase();
+  if (str.includes('single') || str.includes('individual')) return false;
+  return true;
+}
+
+function confirmAndIssueTicket(params) {
+  try {
+    const queryInput = String(params.queryInput || params.query || '').trim();
+    const memberName = String(params.memberName || 'UTA Member').trim();
+    const membershipType = String(params.membershipType || 'UTA Member').trim();
+    const memberEmail = String(params.email || params.memberEmail || '').trim();
+    const adults = Math.max(1, parseInt(params.adults || 1, 10));
+    const children = Math.max(0, parseInt(params.children || 0, 10));
+    const totalAttending = adults + children;
+
+    const ticketCode = 'BK2026-' + Math.floor(100000 + Math.random() * 900000);
+    let emailSent = false;
+
+    // Log to Master Sheet 'Bathukamma_RSVP_Log'
+    if (BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+      try {
+        const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+        let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
+        if (!logSheet) {
+          logSheet = ss.insertSheet(BATHUKAMMA_CONFIG.rsvpLogSheetName);
+          logSheet.appendRow([
+            'Timestamp',
+            'Ticket Code',
+            'Member Name',
+            'Identifier Used',
+            'Membership Category',
+            'Adults',
+            'Children',
+            'Total Attending',
+            'Ticket Status',
+            'Member Email'
+          ]);
+          logSheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#f59e0b');
+        }
+
+        logSheet.appendRow([
+          new Date(),
+          ticketCode,
+          memberName,
+          queryInput,
+          membershipType,
+          adults,
+          children,
+          totalAttending,
+          'CONFIRMED (FREE MEMBER PASS)',
+          memberEmail || 'N/A'
+        ]);
+      } catch(e) {
+        console.warn('Logging error:', e);
+      }
+    }
+
+    // Auto Dispatch Email to Member
+    if (memberEmail && memberEmail.includes('@')) {
+      const emailRes = sendEmailTicketToUser(ticketCode, memberName, memberEmail, adults, children, membershipType);
+      if (emailRes && emailRes.success) emailSent = true;
+    }
+
+    // Send Admin Notification
+    if (BATHUKAMMA_CONFIG.utaAdminEmail) {
+      try {
+        const adminHtml = `
+          <div style="font-family: Arial, sans-serif; padding: 18px; border: 2px solid #f59e0b; border-radius: 10px; background-color: #fcfbf7;">
+            <h3 style="color: #d97706; margin-top: 0;">🎟️ [UTA Admin Alert] New Bathukamma Ticket Pass Issued</h3>
+            <p><strong>Member Name:</strong> ${memberName}</p>
+            <p><strong>Membership Category:</strong> ${membershipType}</p>
+            <p><strong>Ticket Code:</strong> <code style="font-size: 16px; background-color: #fef3c7; padding: 4px 8px; border-radius: 4px; color: #92400e;">${ticketCode}</code></p>
+            <p><strong>Attending Headcount:</strong> ${totalAttending} Persons (${adults} Adults, ${children} Children)</p>
+            <p><strong>Member Email:</strong> ${memberEmail || 'Not provided'}</p>
+            <p><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
+          </div>
+        `;
+        MailApp.sendEmail({
+          to: BATHUKAMMA_CONFIG.utaAdminEmail,
+          subject: `[UTA Admin Alert] Ticket ${ticketCode} - ${memberName} (${totalAttending} Attending)`,
+          htmlBody: adminHtml
+        });
+      } catch(e) {}
+    }
+
+    return {
+      success: true,
+      ticketCode: ticketCode,
+      memberName: memberName,
+      membershipType: membershipType,
+      adults: adults,
+      children: children,
+      totalAttending: totalAttending,
+      emailSent: emailSent,
+      memberEmail: memberEmail
+    };
+  } catch(err) {
+    return { success: false, message: 'Failed to issue ticket: ' + err.toString() };
+  }
+}
+
+function sendEmailTicketToUser(ticketCode, memberName, emailAddress, adultsCount, childrenCount, category) {
   try {
     const cleanEmail = String(emailAddress || '').trim();
     if (!cleanEmail || !cleanEmail.includes('@')) {
       return { success: false, message: 'Please provide a valid email address.' };
     }
+
+    const adults = parseInt(adultsCount || 1, 10);
+    const children = parseInt(childrenCount || 0, 10);
+    const total = adults + children;
+    const catStr = category || 'UTA Member';
 
     const memberHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 2px solid #f59e0b; border-radius: 16px; background-color: #06281c; color: #ffffff;">
@@ -168,7 +257,8 @@ function sendEmailTicketToUser(ticketCode, memberName, emailAddress) {
         <div style="background-color: #021a12; border: 2px solid #f59e0b; padding: 20px; border-radius: 12px; text-align: center; margin: 24px 0;">
           <div style="color: #cbd5e1; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Official Pass Code</div>
           <div style="color: #fbbf24; font-size: 28px; font-weight: bold; letter-spacing: 3px; margin: 8px 0;">${ticketCode}</div>
-          <div style="color: #06d6a0; font-size: 13px; font-weight: bold;">✓ Confirmed Member Ticket • Admit 1</div>
+          <div style="color: #06d6a0; font-size: 14px; font-weight: bold; margin-top: 6px;">✓ Confirmed Member Ticket • ${catStr}</div>
+          <div style="color: #fbbf24; font-size: 15px; font-weight: 700; margin-top: 6px;">👨‍传播 Total Attending: ${total} Guests (${adults} Adults, ${children} Children)</div>
         </div>
 
         <p><strong>Event:</strong> ${BATHUKAMMA_CONFIG.eventName}</p>
@@ -182,7 +272,7 @@ function sendEmailTicketToUser(ticketCode, memberName, emailAddress) {
 
     MailApp.sendEmail({
       to: cleanEmail,
-      subject: `🎟️ Your Bathukamma 2026 Ticket Pass [${ticketCode}] - UTA`,
+      subject: `🎟️ Your Bathukamma 2026 Ticket Pass [${ticketCode}] (${total} Attending) - UTA`,
       htmlBody: memberHtml
     });
 
@@ -192,9 +282,6 @@ function sendEmailTicketToUser(ticketCode, memberName, emailAddress) {
   }
 }
 
-/**
- * Searches Master Sheet tabs (2026, Lifetime, 2025, 2024) for member lookup.
- */
 function checkMembershipStatus(inputQuery) {
   try {
     const rawQuery = String(inputQuery || '').trim();
@@ -212,7 +299,6 @@ function checkMembershipStatus(inputQuery) {
       const match = searchTabForMember_(yearKey, cleanQuery, phoneDigits);
       
       if (match.found) {
-        // ACTIVE RULE: Either in 2026 tab OR Lifetime Member
         const isActiveFor2026 = (yearKey === '2026') || match.isLifetime;
 
         let memberTypeStr = 'UTA Member';
@@ -220,18 +306,6 @@ function checkMembershipStatus(inputQuery) {
           memberTypeStr = 'UTA Lifetime Member';
         } else {
           memberTypeStr = `${yearKey} Annual Member`;
-        }
-
-        // If ACTIVE -> Auto-process ticket, log in Master Sheet, send Dual Emails
-        let ticketInfo = null;
-        if (isActiveFor2026) {
-          ticketInfo = issueTicketAndNotify_({
-            queryInput: rawQuery,
-            memberName: match.memberName || 'UTA Member',
-            membershipType: memberTypeStr,
-            memberEmail: match.email || (rawQuery.includes('@') ? rawQuery : ''),
-            memberPhone: match.phone || (!rawQuery.includes('@') ? rawQuery : '')
-          });
         }
 
         return {
@@ -244,8 +318,6 @@ function checkMembershipStatus(inputQuery) {
           recordYear: yearKey,
           isLifetime: match.isLifetime,
           email: match.email || (rawQuery.includes('@') ? rawQuery : ''),
-          ticketCode: ticketInfo ? ticketInfo.ticketCode : '',
-          emailSent: ticketInfo ? ticketInfo.emailSent : false,
           statusMessage: isActiveFor2026 
             ? 'Active for 2026' 
             : `Membership record found (${memberTypeStr}), but NOT ACTIVE for the year 2026.`,
@@ -255,7 +327,6 @@ function checkMembershipStatus(inputQuery) {
       }
     }
 
-    // Not Found in any tab
     return {
       ok: true,
       found: false,
@@ -270,90 +341,10 @@ function checkMembershipStatus(inputQuery) {
   }
 }
 
-/**
- * Auto-Issues Ticket Code, Logs to 'Bathukamma_RSVP_Log' Sheet, and Sends Dual Emails.
- */
-function issueTicketAndNotify_(details) {
-  const ticketCode = 'BK2026-' + Math.floor(100000 + Math.random() * 900000);
-  let emailSent = false;
-
-  // 1. Log into Master Spreadsheet 'Bathukamma_RSVP_Log' tab for Admin Tracking
-  try {
-    if (BATHUKAMMA_CONFIG.masterSpreadsheetId) {
-      const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
-      let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
-      
-      if (!logSheet) {
-        logSheet = ss.insertSheet(BATHUKAMMA_CONFIG.rsvpLogSheetName);
-        logSheet.appendRow([
-          'Timestamp',
-          'Ticket Code',
-          'Member Name',
-          'Identifier Used',
-          'Membership Category',
-          'Ticket Status',
-          'Member Email'
-        ]);
-        logSheet.getRange(1, 1, 1, 7).setFontWeight('bold').setBackground('#f59e0b');
-      }
-
-      logSheet.appendRow([
-        new Date(),
-        ticketCode,
-        details.memberName,
-        details.queryInput,
-        details.membershipType,
-        'CONFIRMED (FREE MEMBER PASS)',
-        details.memberEmail || 'N/A'
-      ]);
-    }
-  } catch (err) {
-    console.warn('Logging warning:', err);
-  }
-
-  // 2. Send Email Confirmation to Member (if email present)
-  if (details.memberEmail && details.memberEmail.includes('@')) {
-    try {
-      const res = sendEmailTicketToUser(ticketCode, details.memberName, details.memberEmail);
-      if (res && res.success) emailSent = true;
-    } catch (e) {
-      console.warn('Member email dispatch warning:', e);
-    }
-  }
-
-  // 3. Send Notification Email to UTA Admin Address
-  if (BATHUKAMMA_CONFIG.utaAdminEmail) {
-    try {
-      const adminHtml = `
-        <div style="font-family: Arial, sans-serif; padding: 18px; border: 2px solid #f59e0b; border-radius: 10px; background-color: #fcfbf7;">
-          <h3 style="color: #d97706; margin-top: 0;">🎟️ [UTA Admin Notification] New Bathukamma Ticket Claimed</h3>
-          <p><strong>Member Name:</strong> ${details.memberName}</p>
-          <p><strong>Membership Category:</strong> ${details.membershipType}</p>
-          <p><strong>Identifier Used:</strong> ${details.queryInput}</p>
-          <p><strong>Ticket Code Issued:</strong> <code style="font-size: 16px; background-color: #fef3c7; padding: 4px 8px; border-radius: 4px; color: #92400e;">${ticketCode}</code></p>
-          <p><strong>Member Email:</strong> ${details.memberEmail || 'Not provided'}</p>
-          <p><strong>Timestamp:</strong> ${new Date().toLocaleString()}</p>
-        </div>
-      `;
-
-      MailApp.sendEmail({
-        to: BATHUKAMMA_CONFIG.utaAdminEmail,
-        subject: `[UTA Admin Alert] Ticket ${ticketCode} Issued to ${details.memberName}`,
-        htmlBody: adminHtml
-      });
-    } catch (e) {}
-  }
-
-  return { ticketCode: ticketCode, emailSent: emailSent };
-}
-
-/**
- * Fetches Live Admin Web App Dashboard Data
- */
 function getAdminDashboardData(adminPin) {
   try {
     const cleanPin = String(adminPin || '').trim();
-    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || '2026')) {
+    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || 'UTA2026Admin')) {
       return { success: false, message: 'Invalid Admin PIN. Access Denied.' };
     }
 
@@ -365,41 +356,79 @@ function getAdminDashboardData(adminPin) {
     let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
 
     if (!logSheet) {
-      return { success: true, totalIssued: 0, rows: [] };
+      return { success: true, totalIssued: 0, totalAttending: 0, totalAdults: 0, totalChildren: 0, familyCount: 0, singleCount: 0, rows: [] };
     }
 
     const data = logSheet.getDataRange().getValues();
     if (data.length <= 1) {
-      return { success: true, totalIssued: 0, rows: [] };
+      return { success: true, totalIssued: 0, totalAttending: 0, totalAdults: 0, totalChildren: 0, familyCount: 0, singleCount: 0, rows: [] };
     }
+
+    let totalAttending = 0;
+    let totalAdults = 0;
+    let totalChildren = 0;
+    let familyCount = 0;
+    let singleCount = 0;
 
     const rows = [];
     for (let i = 1; i < data.length; i++) {
       const r = data[i];
+      
+      let adults = 1;
+      let children = 0;
+      let total = 1;
+
+      if (r.length >= 10) {
+        adults = parseInt(r[5] || 1, 10);
+        children = parseInt(r[6] || 0, 10);
+        total = parseInt(r[7] || (adults + children), 10);
+      } else {
+        total = 1;
+      }
+
+      totalAttending += total;
+      totalAdults += adults;
+      totalChildren += children;
+
+      const cat = String(r[4] || '');
+      if (isFamilyMembership_(cat)) familyCount++; else singleCount++;
+
       rows.push({
         timestamp: r[0] instanceof Date ? formatDate_(r[0]) : String(r[0] || ''),
         ticketCode: String(r[1] || ''),
         memberName: String(r[2] || ''),
         identifier: String(r[3] || ''),
-        category: String(r[4] || ''),
-        status: String(r[5] || ''),
-        email: String(r[6] || '')
+        category: cat,
+        adults: adults,
+        children: children,
+        totalAttending: total,
+        status: String(r[r.length >= 10 ? 8 : 5] || 'CONFIRMED'),
+        email: String(r[r.length >= 10 ? 9 : 6] || '')
       });
     }
 
     return {
       success: true,
       totalIssued: rows.length,
-      rows: rows.reverse() // show latest tickets on top
+      totalAttending: totalAttending,
+      totalAdults: totalAdults,
+      totalChildren: totalChildren,
+      familyCount: familyCount,
+      singleCount: singleCount,
+      rows: rows.reverse()
     };
   } catch (err) {
     return { success: false, message: 'Error retrieving admin log: ' + err.toString() };
   }
 }
 
-/**
- * Helper to search a specific sheet tab for a matching member.
- */
+function normalizePhoneDigits_(str) {
+  const digits = String(str || '').replace(/\D/g, '');
+  if (digits.length === 10) return digits;
+  if (digits.length === 11 && digits.startsWith('1')) return digits.substring(1);
+  return digits;
+}
+
 function searchTabForMember_(yearKey, cleanQuery, phoneDigits) {
   let sheet = null;
 
@@ -434,97 +463,52 @@ function searchTabForMember_(yearKey, cleanQuery, phoneDigits) {
     let emailCol = headers.findIndex(h => h.includes('email') || h.includes('mail'));
     let phoneCol = headers.findIndex(h => h.includes('phone') || h.includes('mobile') || h.includes('cell'));
 
+    if (nameCol === -1) nameCol = 0;
+
+    const isLifetimeTab = yearKey.toLowerCase().includes('lifetime');
+
     for (let r = 1; r < data.length; r++) {
       const row = data[r];
-      let rowMatch = false;
-      let isLifetime = (yearKey.toLowerCase().includes('life'));
+      const nameVal = nameCol !== -1 ? String(row[nameCol] || '').trim() : '';
+      const emailVal = emailCol !== -1 ? String(row[emailCol] || '').trim() : '';
+      const phoneVal = phoneCol !== -1 ? String(row[phoneCol] || '').trim() : '';
+      const typeVal = typeCol !== -1 ? String(row[typeCol] || '').trim() : '';
+      const dateVal = dateCol !== -1 ? row[dateCol] : '';
 
-      for (let c = 0; c < row.length; c++) {
-        const val = row[c];
-        if (val == null || val === '') continue;
+      const cleanEmail = emailVal.toLowerCase();
+      const rowPhoneDigits = normalizePhoneDigits_(phoneVal);
 
-        const valStr = String(val).trim();
-        const valLower = valStr.toLowerCase();
-        const cellDigits = normalizePhoneDigits_(valStr);
+      let isMatch = false;
 
-        if (cleanQuery.length >= 3 && valLower === cleanQuery) {
-          rowMatch = true;
-        }
-        else if (phoneDigits.length >= 7 && cellDigits.length >= 7 && (cellDigits === phoneDigits || cellDigits.includes(phoneDigits) || phoneDigits.includes(cellDigits))) {
-          rowMatch = true;
-        }
-
-        if (valLower.includes('lifetime') || valLower.includes('life time') || valLower.includes('family life')) {
-          isLifetime = true;
-        }
+      if (cleanEmail && cleanQuery.includes('@') && cleanEmail === cleanQuery) {
+        isMatch = true;
+      } else if (phoneDigits && rowPhoneDigits && rowPhoneDigits === phoneDigits) {
+        isMatch = true;
+      } else if (cleanQuery && nameVal.toLowerCase().includes(cleanQuery)) {
+        isMatch = true;
       }
 
-      if (rowMatch) {
-        let memberName = (nameCol >= 0 && row[nameCol]) ? String(row[nameCol]).trim() : '';
-        let purchaseDate = (dateCol >= 0 && row[dateCol]) ? formatDate_(row[dateCol]) : '';
-        let rawType = (typeCol >= 0 && row[typeCol]) ? String(row[typeCol]).trim() : '';
-        let memberEmail = (emailCol >= 0 && row[emailCol]) ? String(row[emailCol]).trim() : '';
-        let memberPhone = (phoneCol >= 0 && row[phoneCol]) ? String(row[phoneCol]).trim() : '';
-
-        if (!memberName) {
-          for (let c = 0; c < row.length; c++) {
-            const v = String(row[c] || '').trim();
-            if (v && !v.includes('@') && !/\d{5,}/.test(v) && v.split(' ').length >= 1) {
-              memberName = v;
-              break;
-            }
-          }
-        }
-
-        if (!purchaseDate && row[0] instanceof Date) {
-          purchaseDate = formatDate_(row[0]);
-        }
-
+      if (isMatch) {
         return {
           found: true,
-          isLifetime: isLifetime,
-          memberName: memberName,
-          purchaseDate: purchaseDate,
-          rawType: rawType,
-          email: memberEmail,
-          phone: memberPhone
+          memberName: nameVal || 'UTA Member',
+          email: emailVal,
+          phone: phoneVal,
+          membershipType: typeVal || (isLifetimeTab ? 'UTA Lifetime Member' : `UTA ${yearKey} Annual Member`),
+          purchaseDate: dateVal instanceof Date ? formatDate_(dateVal) : String(dateVal || 'On File'),
+          isLifetime: isLifetimeTab || typeVal.toLowerCase().includes('lifetime')
         };
       }
     }
-  } catch (e) {}
+  } catch(e) {}
 
   return { found: false };
 }
 
-/**
- * Normalizes all phone number formats to standard 10-digit numerical string.
- */
-function normalizePhoneDigits_(str) {
-  const digits = String(str || '').replace(/\D/g, '');
-  if (!digits) return '';
-  if (digits.length === 11 && digits.startsWith('1')) {
-    return digits.slice(1);
-  }
-  if (digits.length >= 10) {
-    return digits.slice(-10);
-  }
-  return digits;
-}
-
-/**
- * Formats timestamps/dates nicely for display.
- */
-function formatDate_(dateVal) {
-  if (!dateVal) return '';
+function formatDate_(d) {
   try {
-    if (dateVal instanceof Date) {
-      return Utilities.formatDate(dateVal, Session.getScriptTimeZone() || "GMT", "MMM dd, yyyy, hh:mm a");
-    }
-    const d = new Date(dateVal);
-    if (!isNaN(d.getTime())) {
-      return Utilities.formatDate(d, Session.getScriptTimeZone() || "GMT", "MMM dd, yyyy, hh:mm a");
-    }
-  } catch (e) {}
-  return String(dateVal);
+    return Utilities.formatDate(d, Session.getScriptTimeZone() || 'America/Denver', 'MMM dd, yyyy HH:mm');
+  } catch(e) {
+    return String(d);
+  }
 }
-

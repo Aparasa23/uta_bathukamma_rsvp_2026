@@ -546,7 +546,104 @@
     .admin-table tr:hover {
       background: rgba(245, 158, 11, 0.12);
     }
-  </style>
+  
+    /* Family Headcount Selector Styles */
+    .headcount-card {
+      background: rgba(2, 26, 18, 0.75);
+      border: 2px solid var(--gold-primary);
+      border-radius: 16px;
+      padding: 24px;
+      margin-top: 20px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    }
+    .headcount-header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .headcount-title {
+      font-family: 'Cinzel', serif;
+      font-size: 1.25rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+    .headcount-subtitle {
+      font-size: 0.88rem;
+      color: #fbbf24;
+      margin-top: 4px;
+    }
+    .counter-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+    @media (max-width: 500px) {
+      .counter-grid { grid-template-columns: 1fr; }
+    }
+    .counter-box {
+      background: rgba(6, 40, 28, 0.6);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .counter-label {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: #ffffff;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .counter-subtext {
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 10px;
+    }
+    .counter-controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+    }
+    .cnt-btn {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: #000;
+      border: none;
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      font-size: 1.3rem;
+      font-weight: 800;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+      transition: all 0.2s ease;
+    }
+    .cnt-btn:hover { transform: scale(1.1); }
+    .cnt-val {
+      font-family: 'Space Grotesk', monospace;
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #fbbf24;
+      min-width: 32px;
+      text-align: center;
+    }
+    .total-badge {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid var(--gold-primary);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #ffffff;
+      margin-bottom: 20px;
+    }
+    .total-num { color: #fbbf24; font-size: 1.1rem; }
+
+</style>
 </head>
 <body>
 
@@ -761,6 +858,9 @@
           return {
             verifyMemberAndIssueRSVP: function(query) {
               executeApiCall('verifyMemberAndIssueRSVP', { query: query }, onSuccess, onFailure);
+            },
+            confirmAndIssueTicket: function(params) {
+              executeApiCall('confirmAndIssueTicket', params, onSuccess, onFailure);
             },
             sendEmailTicketToUser: function(ticketCode, memberName, email) {
               executeApiCall('sendEmailTicketToUser', { ticketCode: ticketCode, memberName: memberName, email: email }, onSuccess, onFailure);
@@ -1076,7 +1176,9 @@
       currentAdminRows = res.rows || [];
       
       document.getElementById('kpiTotalCount').textContent = res.totalIssued || 0;
-      document.getElementById('kpiActiveCount').textContent = res.activeCount || res.totalIssued || 0;
+      document.getElementById('kpiAttendingCount').textContent = res.totalAttending || res.totalIssued || 0;
+      document.getElementById('kpiAdultsCount').textContent = res.totalAdults || 0;
+      document.getElementById('kpiChildrenCount').textContent = res.totalChildren || 0;
 
       populateAdminTable(currentAdminRows);
     }
@@ -1090,12 +1192,16 @@
 
       let html = '';
       rows.forEach(r => {
+        const adults = r.adults || 1;
+        const kids = r.children || 0;
+        const total = r.totalAttending || (adults + kids);
         html += `
           <tr>
             <td style="font-size:0.78rem;">${escapeHtml(r.timestamp)}</td>
             <td><strong style="color:#fbbf24; font-family:'Space Grotesk', monospace;">${escapeHtml(r.ticketCode)}</strong></td>
             <td><strong>${escapeHtml(r.memberName)}</strong></td>
             <td><span style="font-size:0.76rem; background:rgba(245,158,11,0.2); padding:3px 8px; border-radius:4px; color:#fbbf24;">${escapeHtml(r.category)}</span></td>
+            <td style="font-size:0.85rem;"><strong style="color:#10b981;">${total} Guests</strong> <span style="font-size:0.75rem; color:#cbd5e1;">(${adults}A, ${kids}C)</span></td>
             <td style="font-size:0.82rem;">${escapeHtml(r.email || r.identifier)}</td>
             <td><span style="color:#10b981; font-weight:700; font-size:0.76rem;">CONFIRMED</span></td>
           </tr>
