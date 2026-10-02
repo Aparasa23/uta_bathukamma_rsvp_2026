@@ -8,6 +8,21 @@
  * 4. User Email Request Feature: Allows member to send/resend email ticket pass.
  */
 
+
+/**
+ * RUN THIS FUNCTION ONCE IN APPS SCRIPT EDITOR BY CLICKING '▷ Run'
+ * This triggers Google's Authorization Dialog for MailApp and Spreadsheets!
+ */
+function authorizeMailPermissionsTest() {
+  const userEmail = Session.getActiveUser().getEmail() || BATHUKAMMA_CONFIG.utaAdminEmail;
+  Logger.log("Authorizing MailApp for email: " + userEmail);
+  MailApp.sendEmail({
+    to: userEmail,
+    subject: "UTA Bathukamma System Permissions Test",
+    body: "Permissions authorized successfully! Your Bathukamma 2026 Web App can now dispatch ticket pass emails."
+  });
+}
+
 const BATHUKAMMA_CONFIG = {
   eventName: 'Bathukamma 2026 Grand Celebration',
   eventDate: 'October 2026',
