@@ -867,6 +867,9 @@
             },
             getAdminDashboardData: function(pin) {
               executeApiCall('getAdminDashboardData', { pin: pin }, onSuccess, onFailure);
+            },
+            clearRsvpLogTab: function(pin) {
+              executeApiCall('clearRsvpLogTab', { pin: pin }, onSuccess, onFailure);
             }
           };
         }
@@ -1321,7 +1324,28 @@
       populateAdminTable(filtered);
     }
 
-    function exportRSVPCSV() {
+        function clearAdminRsvpDb() {
+      if (!authenticatedAdminPin) return;
+      if (!confirm("⚠️ Are you sure you want to clean the RSVP log database like a slate? All current RSVP records in the sheet will be permanently deleted!")) return;
+
+      const tbody = document.getElementById("adminTableBody");
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#ef4444; padding:24px;">🗑️ Clearing RSVP database like a slate...</td></tr>`;
+      }
+
+      google.script.run
+        .withSuccessHandler(function(res) {
+          alert(res.message || "Database cleared cleanly.");
+          fetchAdminData();
+        })
+        .withFailureHandler(function(err) {
+          alert("Failed to clear database: " + (err.message || err));
+          fetchAdminData();
+        })
+        .clearRsvpLogTab(authenticatedAdminPin);
+    }
+
+function exportRSVPCSV() {
       if (!currentAdminRows || currentAdminRows.length === 0) {
         alert('No RSVP data to export.');
         return;

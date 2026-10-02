@@ -69,6 +69,9 @@ function handleApiRequest(params) {
     } else if (action === "getAdminDashboardData" || action === "admin") {
       const pin = params.pin || params.password || "";
       result = getAdminDashboardData(pin);
+    } else if (action === "clearRsvpLogTab" || action === "clearLog") {
+      const pin = params.pin || params.password || "";
+      result = clearRsvpLogTab(pin);
     } else if (action === "sendEmailTicketToUser" || action === "sendEmail") {
       const ticketCode = params.ticketCode || "";
       const memberName = params.memberName || "";
@@ -692,5 +695,38 @@ function formatDate_(dateObj) {
     return Utilities.formatDate(dateObj, Session.getScriptTimeZone(), "MMM dd, yyyy HH:mm");
   } catch (e) {
     return String(dateObj);
+  }
+}
+
+
+function clearRsvpLogTab(adminPin) {
+  try {
+    const cleanPin = String(adminPin || "").trim();
+    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || "UTA2026Admin")) {
+      return { success: false, message: "Invalid Admin PIN. Access Denied." };
+    }
+
+    if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+      return { success: false, message: "Master Spreadsheet ID missing." };
+    }
+
+    const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+    let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
+
+    if (!logSheet) {
+      return { success: true, message: "RSVP Log sheet does not exist or is already clean." };
+    }
+
+    const lastRow = logSheet.getLastRow();
+    if (lastRow > 1) {
+      logSheet.deleteRows(2, lastRow - 1);
+    }
+
+    return {
+      success: true,
+      message: `Cleared ${lastRow - 1} RSVP log entries cleanly.`
+    };
+  } catch (err) {
+    return { success: false, message: "Error clearing RSVP log: " + err.toString() };
   }
 }
