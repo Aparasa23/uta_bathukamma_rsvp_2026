@@ -686,7 +686,7 @@
       window.google.script.run = (function() {
         // Embedded Default Google Apps Script Deployed Web App URL
         // Replace this string with your deployed script.google.com/macros/s/.../exec URL to make it seamless for all users!
-        let DEFAULT_GAS_URL = window.DEFAULT_GAS_URL || '';
+        let DEFAULT_GAS_URL = window.DEFAULT_GAS_URL || 'https://script.google.com/macros/s/AKfycbzSlIsL4YM6JA1Co9ZIxyRdoa_b4kgAC4KRvsq7rTfCXYOW30Zn8rZRWO85LVRjn_tS/exec';
 
         function getCleanGasUrl() {
           const urlParams = new URLSearchParams(window.location.search);
