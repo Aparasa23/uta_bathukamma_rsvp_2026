@@ -286,45 +286,68 @@ function checkMembershipStatus(inputQuery) {
   try {
     const rawQuery = String(inputQuery || '').trim();
     if (!rawQuery) {
-      return { ok: false, error: 'Please enter an email, phone number, or Member ID.' };
+      return { ok: false, error: 'Please enter an email, phone number, or Member ID/Name.' };
     }
 
     const cleanQuery = rawQuery.toLowerCase();
     const phoneDigits = normalizePhoneDigits_(rawQuery);
 
-    const tabsToSearch = ['2026', 'Lifetime', '2025', '2024'];
+    if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+      return { ok: false, error: 'Master Spreadsheet ID is not configured.' };
+    }
 
-    for (let i = 0; i < tabsToSearch.length; i++) {
-      const yearKey = tabsToSearch[i];
-      const match = searchTabForMember_(yearKey, cleanQuery, phoneDigits);
+    const masterSs = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+    const sheets = masterSs.getSheets();
+
+    let allMatches = [];
+
+    // Search through all tabs in master spreadsheet
+    for (let s = 0; s < sheets.length; s++) {
+      const sheet = sheets[s];
+      const tabName = sheet.getName();
       
-      if (match.found) {
-        const isActiveFor2026 = (yearKey === '2026') || match.isLifetime;
+      // Skip log sheet
+      if (tabName.toLowerCase() === BATHUKAMMA_CONFIG.rsvpLogSheetName.toLowerCase()) continue;
 
-        let memberTypeStr = 'UTA Member';
-        if (match.isLifetime) {
-          memberTypeStr = 'UTA Lifetime Member';
-        } else {
-          memberTypeStr = `${yearKey} Annual Member`;
+      const match = searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery);
+      if (match.found) {
+        const isLifetime = match.isLifetime || tabName.toLowerCase().includes('life');
+        const isActiveFor2026 = tabName.toLowerCase().includes('2026') || isLifetime;
+
+        let memberTypeStr = match.membershipType;
+        if (!memberTypeStr || memberTypeStr === 'UTA Member') {
+          memberTypeStr = isLifetime ? 'UTA Lifetime Member' : `UTA ${tabName} Member`;
         }
 
-        return {
+        const matchResult = {
           ok: true,
           found: true,
           active: isActiveFor2026,
           memberName: match.memberName || 'UTA Member',
           membershipType: memberTypeStr,
           purchaseDate: match.purchaseDate || 'Recorded on File',
-          recordYear: yearKey,
-          isLifetime: match.isLifetime,
+          recordYear: tabName,
+          isLifetime: isLifetime,
           email: match.email || (rawQuery.includes('@') ? rawQuery : ''),
+          phone: match.phone || '',
           statusMessage: isActiveFor2026 
             ? 'Active for 2026' 
             : `Membership record found (${memberTypeStr}), but NOT ACTIVE for the year 2026.`,
           buyTicketUrl: BATHUKAMMA_CONFIG.buyTicketUrl,
           renewUrl: BATHUKAMMA_CONFIG.renewMembershipUrl
         };
+
+        allMatches.push(matchResult);
+
+        // If active for 2026 (or Lifetime), return immediately as top priority
+        if (isActiveFor2026) {
+          return matchResult;
+        }
       }
+    }
+
+    if (allMatches.length > 0) {
+      return allMatches[0];
     }
 
     return {
@@ -337,89 +360,111 @@ function checkMembershipStatus(inputQuery) {
     };
 
   } catch (err) {
-    return { ok: false, error: 'Verification system error. Please try again or contact support.' };
+    return { ok: false, error: 'Verification system error: ' + err.toString() };
   }
 }
 
-function getAdminDashboardData(adminPin) {
+function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
   try {
-    const cleanPin = String(adminPin || '').trim();
-    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || 'UTA2026Admin')) {
-      return { success: false, message: 'Invalid Admin PIN. Access Denied.' };
+    const tabName = sheet.getName();
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return { found: false };
+
+    const headers = data[0].map(h => String(h || '').toLowerCase().trim());
+    
+    let nameCols = [];
+    let emailCols = [];
+    let phoneCols = [];
+    let typeCols = [];
+    let dateCols = [];
+
+    for (let c = 0; c < headers.length; c++) {
+      const h = headers[c];
+      if (h.includes('name') || h.includes('member') || h.includes('primary')) nameCols.push(c);
+      if (h.includes('email') || h.includes('mail')) emailCols.push(c);
+      if (h.includes('phone') || h.includes('mobile') || h.includes('cell') || h.includes('contact') || h.includes('number')) phoneCols.push(c);
+      if (h.includes('type') || h.includes('membership') || h.includes('category') || h.includes('plan')) typeCols.push(c);
+      if (h.includes('timestamp') || h.includes('date') || h.includes('time') || h.includes('year')) dateCols.push(c);
     }
 
-    if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
-      return { success: false, message: 'Master Spreadsheet ID missing.' };
-    }
+    const isLifetimeTab = tabName.toLowerCase().includes('life');
 
-    const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
-    let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
-
-    if (!logSheet) {
-      return { success: true, totalIssued: 0, totalAttending: 0, totalAdults: 0, totalChildren: 0, familyCount: 0, singleCount: 0, rows: [] };
-    }
-
-    const data = logSheet.getDataRange().getValues();
-    if (data.length <= 1) {
-      return { success: true, totalIssued: 0, totalAttending: 0, totalAdults: 0, totalChildren: 0, familyCount: 0, singleCount: 0, rows: [] };
-    }
-
-    let totalAttending = 0;
-    let totalAdults = 0;
-    let totalChildren = 0;
-    let familyCount = 0;
-    let singleCount = 0;
-
-    const rows = [];
-    for (let i = 1; i < data.length; i++) {
-      const r = data[i];
+    for (let r = 1; r < data.length; r++) {
+      const row = data[r];
       
-      let adults = 1;
-      let children = 0;
-      let total = 1;
+      let nameParts = [];
+      nameCols.forEach(c => {
+        const val = String(row[c] || '').trim();
+        if (val) nameParts.push(val);
+      });
+      let fullNameStr = nameParts.join(' ').trim();
+      if (!fullNameStr && row.length > 0) fullNameStr = String(row[0] || '').trim();
 
-      if (r.length >= 10) {
-        adults = parseInt(r[5] || 1, 10);
-        children = parseInt(r[6] || 0, 10);
-        total = parseInt(r[7] || (adults + children), 10);
-      } else {
-        total = 1;
+      let emailVal = '';
+      emailCols.forEach(c => {
+        const val = String(row[c] || '').trim();
+        if (val && val.includes('@')) emailVal = val;
+      });
+
+      let phoneVal = '';
+      phoneCols.forEach(c => {
+        const val = String(row[c] || '').trim();
+        if (val && normalizePhoneDigits_(val).length >= 7) phoneVal = val;
+      });
+
+      let typeVal = '';
+      typeCols.forEach(c => {
+        const val = String(row[c] || '').trim();
+        if (val) typeVal = val;
+      });
+
+      let dateVal = dateCols.length > 0 ? row[dateCols[0]] : '';
+
+      const rowText = row.map(cell => String(cell || '').toLowerCase()).join(' ');
+
+      const cleanEmail = emailVal.toLowerCase();
+      const rowPhoneDigits = normalizePhoneDigits_(phoneVal || rowText);
+
+      let isMatch = false;
+
+      // 1. Email match
+      if (cleanEmail && cleanQuery.includes('@') && cleanEmail === cleanQuery) {
+        isMatch = true;
+      } else if (cleanQuery.includes('@') && rowText.includes(cleanQuery)) {
+        isMatch = true;
+      }
+      // 2. Phone digits match
+      else if (phoneDigits && phoneDigits.length >= 7 && rowPhoneDigits.includes(phoneDigits)) {
+        isMatch = true;
+      }
+      // 3. Name match
+      else if (cleanQuery && fullNameStr && fullNameStr.toLowerCase().includes(cleanQuery)) {
+        isMatch = true;
+      } else if (cleanQuery && cleanQuery.length >= 3) {
+        const queryWords = cleanQuery.split(/\s+/).filter(w => w.length > 1);
+        if (queryWords.length > 0 && queryWords.every(w => rowText.includes(w))) {
+          isMatch = true;
+        }
       }
 
-      totalAttending += total;
-      totalAdults += adults;
-      totalChildren += children;
-
-      const cat = String(r[4] || '');
-      if (isFamilyMembership_(cat)) familyCount++; else singleCount++;
-
-      rows.push({
-        timestamp: r[0] instanceof Date ? formatDate_(r[0]) : String(r[0] || ''),
-        ticketCode: String(r[1] || ''),
-        memberName: String(r[2] || ''),
-        identifier: String(r[3] || ''),
-        category: cat,
-        adults: adults,
-        children: children,
-        totalAttending: total,
-        status: String(r[r.length >= 10 ? 8 : 5] || 'CONFIRMED'),
-        email: String(r[r.length >= 10 ? 9 : 6] || '')
-      });
+      if (isMatch) {
+        const isLifetimeRow = isLifetimeTab || typeVal.toLowerCase().includes('life') || rowText.includes('lifetime') || rowText.includes('life time');
+        return {
+          found: true,
+          memberName: fullNameStr || 'UTA Member',
+          email: emailVal,
+          phone: phoneVal,
+          membershipType: typeVal || (isLifetimeRow ? 'UTA Lifetime Member' : `UTA ${tabName} Member`),
+          purchaseDate: dateVal instanceof Date ? formatDate_(dateVal) : String(dateVal || 'On File'),
+          isLifetime: isLifetimeRow
+        };
+      }
     }
-
-    return {
-      success: true,
-      totalIssued: rows.length,
-      totalAttending: totalAttending,
-      totalAdults: totalAdults,
-      totalChildren: totalChildren,
-      familyCount: familyCount,
-      singleCount: singleCount,
-      rows: rows.reverse()
-    };
-  } catch (err) {
-    return { success: false, message: 'Error retrieving admin log: ' + err.toString() };
+  } catch(e) {
+    console.warn('Error searching tab ' + sheet.getName() + ':', e);
   }
+
+  return { found: false };
 }
 
 function normalizePhoneDigits_(str) {
@@ -427,82 +472,6 @@ function normalizePhoneDigits_(str) {
   if (digits.length === 10) return digits;
   if (digits.length === 11 && digits.startsWith('1')) return digits.substring(1);
   return digits;
-}
-
-function searchTabForMember_(yearKey, cleanQuery, phoneDigits) {
-  let sheet = null;
-
-  if (BATHUKAMMA_CONFIG.masterSpreadsheetId) {
-    try {
-      const masterSs = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
-      sheet = masterSs.getSheetByName(yearKey);
-      
-      if (!sheet && masterSs.getSheets().length > 0) {
-        const sheets = masterSs.getSheets();
-        for (let s = 0; s < sheets.length; s++) {
-          if (sheets[s].getName().toLowerCase().includes(yearKey.toLowerCase())) {
-            sheet = sheets[s];
-            break;
-          }
-        }
-      }
-    } catch (err) {}
-  }
-
-  if (!sheet) return { found: false };
-
-  try {
-    const data = sheet.getDataRange().getValues();
-    if (data.length <= 1) return { found: false };
-
-    const headers = data[0].map(h => String(h || '').toLowerCase().trim());
-    
-    let nameCol = headers.findIndex(h => h.includes('name'));
-    let dateCol = headers.findIndex(h => h.includes('timestamp') || h.includes('date') || h.includes('time'));
-    let typeCol = headers.findIndex(h => h.includes('type') || h.includes('membership') || h.includes('category'));
-    let emailCol = headers.findIndex(h => h.includes('email') || h.includes('mail'));
-    let phoneCol = headers.findIndex(h => h.includes('phone') || h.includes('mobile') || h.includes('cell'));
-
-    if (nameCol === -1) nameCol = 0;
-
-    const isLifetimeTab = yearKey.toLowerCase().includes('lifetime');
-
-    for (let r = 1; r < data.length; r++) {
-      const row = data[r];
-      const nameVal = nameCol !== -1 ? String(row[nameCol] || '').trim() : '';
-      const emailVal = emailCol !== -1 ? String(row[emailCol] || '').trim() : '';
-      const phoneVal = phoneCol !== -1 ? String(row[phoneCol] || '').trim() : '';
-      const typeVal = typeCol !== -1 ? String(row[typeCol] || '').trim() : '';
-      const dateVal = dateCol !== -1 ? row[dateCol] : '';
-
-      const cleanEmail = emailVal.toLowerCase();
-      const rowPhoneDigits = normalizePhoneDigits_(phoneVal);
-
-      let isMatch = false;
-
-      if (cleanEmail && cleanQuery.includes('@') && cleanEmail === cleanQuery) {
-        isMatch = true;
-      } else if (phoneDigits && rowPhoneDigits && rowPhoneDigits === phoneDigits) {
-        isMatch = true;
-      } else if (cleanQuery && nameVal.toLowerCase().includes(cleanQuery)) {
-        isMatch = true;
-      }
-
-      if (isMatch) {
-        return {
-          found: true,
-          memberName: nameVal || 'UTA Member',
-          email: emailVal,
-          phone: phoneVal,
-          membershipType: typeVal || (isLifetimeTab ? 'UTA Lifetime Member' : `UTA ${yearKey} Annual Member`),
-          purchaseDate: dateVal instanceof Date ? formatDate_(dateVal) : String(dateVal || 'On File'),
-          isLifetime: isLifetimeTab || typeVal.toLowerCase().includes('lifetime')
-        };
-      }
-    }
-  } catch(e) {}
-
-  return { found: false };
 }
 
 function formatDate_(d) {
