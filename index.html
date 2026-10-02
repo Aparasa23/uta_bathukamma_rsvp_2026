@@ -957,6 +957,10 @@
         .verifyMemberAndIssueRSVP(query);
     }
 
+    let currentActiveMemberData = null;
+    let selectedAdults = 1;
+    let selectedChildren = 0;
+
     function renderResult(response) {
       const resultContainer = document.getElementById('resultContainer');
       const searchBtn = document.getElementById('searchBtn');
@@ -970,7 +974,7 @@
 
       if (!response.success) {
         resultContainer.innerHTML = `
-          <div class="status-card-error">
+          <div class="status-card-warning">
             <div class="card-title" style="color:#ef4444;">⚠️ Verification Error</div>
             <p style="color:#f87171; font-size:0.95rem;">${escapeHtml(response.message)}</p>
           </div>
@@ -984,60 +988,59 @@
       let html = '';
 
       if (status === 'ACTIVE') {
+        currentActiveMemberData = data;
+        selectedAdults = data.suggestedAdults || (data.isFamily ? 2 : 1);
+        selectedChildren = data.suggestedChildren || 0;
         const defaultEmail = data.email || '';
+
         html = `
-          <div class="cultural-ticket-pass">
-            <div class="pass-header">
-              <div>
-                <div style="font-size:0.75rem; color:#fbbf24; font-weight:700; text-transform:uppercase;">Official Event Pass</div>
-                <div style="font-family:'Cinzel', serif; font-size:1.15rem; font-weight:800; color:#fff;">UTA BATHUKAMMA 2026</div>
-              </div>
-              <div class="pass-tag">VIP MEMBER PASS</div>
+          <div class="headcount-card">
+            <div class="headcount-header">
+              <div style="font-size:0.75rem; color:#fbbf24; font-weight:700; text-transform:uppercase;">🎉 Active Member Verified</div>
+              <div class="headcount-title">${escapeHtml(data.memberName)}</div>
+              <div class="headcount-subtitle"><span style="background:rgba(245,158,11,0.2); padding:4px 12px; border-radius:6px; border:1px solid rgba(245,158,11,0.4); font-weight:700;">${escapeHtml(data.membershipType)}</span></div>
             </div>
 
-            <div class="info-grid">
-              <div class="info-item full">
-                <span class="info-label">Member Name</span>
-                <span class="info-val gold">${escapeHtml(data.memberName)}</span>
+            <p style="text-align:center; color:#e2e8f0; font-size:0.92rem; margin-bottom:16px;">
+              Please select the number of family members attending Bathukamma 2026:
+            </p>
+
+            <div class="counter-grid">
+              <div class="counter-box">
+                <div class="counter-label">Adults</div>
+                <div class="counter-subtext">(Ages 12+)</div>
+                <div class="counter-controls">
+                  <button type="button" class="cnt-btn" onclick="adjustCount('adults', -1)">-</button>
+                  <span class="cnt-val" id="adultsVal">${selectedAdults}</span>
+                  <button type="button" class="cnt-btn" onclick="adjustCount('adults', 1)">+</button>
+                </div>
               </div>
-              <div class="info-item">
-                <span class="info-label">Member ID</span>
-                <span class="info-val">${escapeHtml(data.memberId)}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Status</span>
-                <span class="info-val" style="color:#10b981;">✓ 2026 ACTIVE</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Membership Type</span>
-                <span class="info-val">${escapeHtml(data.membershipType)}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">Primary Email</span>
-                <span class="info-val" style="font-size:0.88rem; word-break:break-all;">${escapeHtml(defaultEmail || 'Not specified')}</span>
+
+              <div class="counter-box">
+                <div class="counter-label">Children</div>
+                <div class="counter-subtext">(Under 12)</div>
+                <div class="counter-controls">
+                  <button type="button" class="cnt-btn" onclick="adjustCount('children', -1)">-</button>
+                  <span class="cnt-val" id="childrenVal">${selectedChildren}</span>
+                  <button type="button" class="cnt-btn" onclick="adjustCount('children', 1)">+</button>
+                </div>
               </div>
             </div>
 
-            <div class="qr-stub">
-              <div style="font-size:0.72rem; color:rgba(255,255,255,0.7); text-transform:uppercase; letter-spacing:1px; margin-bottom:4px;">Official Ticket Code</div>
-              <div class="ticket-code">${escapeHtml(response.ticketCode)}</div>
-              <div class="email-sent-badge">✓ Ticket pass generated & logged in UTA Database</div>
+            <div class="total-badge">
+              Total Attending Headcount: <span class="total-num" id="totalAttendingVal">${selectedAdults + selectedChildren} Persons</span>
             </div>
 
-            <!-- User Email Ticket Dispatch Section -->
-            <div style="margin-top:16px; padding-top:14px; border-top:1.5px dashed rgba(245,158,11,0.35);">
-              <div style="font-size:0.8rem; color:#fbbf24; font-weight:800; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">
-                ✉️ Send Digital Ticket to Email
-              </div>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <input type="text" id="userEmailInput" value="${escapeHtml(defaultEmail)}" placeholder="Enter email address..." style="flex:1; min-width:200px; padding:12px 14px; font-size:0.9rem;">
-                <button onclick="sendUserTicketEmail('${escapeHtml(response.ticketCode)}', '${escapeHtml(data.memberName)}')" style="padding:12px 18px; background:linear-gradient(135deg, #f59e0b, #ea580c); color:#021a12; font-weight:800; font-size:0.9rem; border:none; border-radius:12px; cursor:pointer; white-space:nowrap; box-shadow:0 4px 12px rgba(234,88,12,0.4);">
-                  Send Email Pass
-                </button>
-              </div>
-              <div id="emailSendMsg" style="font-size:0.8rem; margin-top:8px;"></div>
+            <div style="margin-bottom:16px;">
+              <label class="input-label" for="confirmMemberEmail">CONFIRM EMAIL FOR TICKET PASS</label>
+              <input type="email" id="confirmMemberEmail" value="${escapeHtml(defaultEmail)}" placeholder="Enter your email address..." style="padding:12px 16px; font-size:0.9rem; border-radius:10px;">
             </div>
 
+            <button onclick="submitRsvpConfirmation()" class="gold-submit-btn" id="confirmTicketBtn">
+              <span id="confirmBtnText">Confirm RSVP & Generate Ticket Pass 🎟️</span>
+              <span id="confirmBtnLoader" class="loader-spinner" style="display:none;"></span>
+            </button>
+            <div id="confirmStatusMsg" style="margin-top:10px; font-size:0.88rem; text-align:center;"></div>
           </div>
         `;
       } else if (status === 'EXPIRED') {
@@ -1066,7 +1069,7 @@
           <div class="status-card-warning">
             <div class="card-title" style="color:#fbbf24;">🔍 Membership Record Not Found</div>
             <p style="color:#f3f4f6; font-size:0.95rem; line-height:1.5; margin-bottom:12px;">
-              We couldn't locate an active UTA membership matching "<strong>${escapeHtml(query)}</strong>".
+              We couldn't locate an active UTA membership matching "<strong>${escapeHtml(document.getElementById('lookupQuery').value)}</strong>".
             </p>
             <p style="color:#d1d5db; font-size:0.9rem; line-height:1.4;">
               If you are a member, please verify your registered email or phone number. You can also join UTA as a new 2026 member or purchase general admission tickets below.
@@ -1088,35 +1091,108 @@
       resultContainer.style.display = 'block';
     }
 
-    function sendUserTicketEmail(ticketCode, memberName) {
-      const emailInput = document.getElementById('userEmailInput');
-      const emailSendMsg = document.getElementById('emailSendMsg');
+    function adjustCount(type, delta) {
+      if (type === 'adults') {
+        selectedAdults = Math.max(1, selectedAdults + delta);
+        document.getElementById('adultsVal').textContent = selectedAdults;
+      } else if (type === 'children') {
+        selectedChildren = Math.max(0, selectedChildren + delta);
+        document.getElementById('childrenVal').textContent = selectedChildren;
+      }
+      const total = selectedAdults + selectedChildren;
+      document.getElementById('totalAttendingVal').textContent = total + (total === 1 ? ' Person' : ' Persons');
+    }
+
+    function submitRsvpConfirmation() {
+      if (!currentActiveMemberData) return;
+
+      const confirmBtn = document.getElementById('confirmTicketBtn');
+      const confirmBtnText = document.getElementById('confirmBtnText');
+      const confirmBtnLoader = document.getElementById('confirmBtnLoader');
+      const confirmStatusMsg = document.getElementById('confirmStatusMsg');
+      const emailInput = document.getElementById('confirmMemberEmail');
       const email = emailInput ? emailInput.value.trim() : '';
 
-      if (!email || !email.includes('@')) {
-        emailSendMsg.style.color = '#f87171';
-        emailSendMsg.textContent = '⚠️ Please enter a valid email address.';
-        return;
-      }
+      confirmBtn.disabled = true;
+      confirmBtn.style.opacity = '0.75';
+      confirmBtnText.textContent = 'Generating Ticket Pass...';
+      confirmBtnLoader.style.display = 'inline-block';
+      confirmStatusMsg.textContent = '';
 
-      emailSendMsg.style.color = '#fbbf24';
-      emailSendMsg.textContent = '⏳ Sending email ticket pass...';
+      const payload = {
+        queryInput: currentActiveMemberData.queryInput || '',
+        memberName: currentActiveMemberData.memberName || 'UTA Member',
+        membershipType: currentActiveMemberData.membershipType || 'UTA Member',
+        email: email,
+        adults: selectedAdults,
+        children: selectedChildren
+      };
 
       google.script.run
         .withSuccessHandler(function(res) {
+          confirmBtn.disabled = false;
+          confirmBtn.style.opacity = '1';
+          confirmBtnText.textContent = 'Confirm RSVP & Generate Ticket Pass 🎟️';
+          confirmBtnLoader.style.display = 'none';
+
           if (res && res.success) {
-            emailSendMsg.style.color = '#06d6a0';
-            emailSendMsg.textContent = '✅ Email pass successfully sent to ' + email;
+            renderFinalTicketCard(res);
           } else {
-            emailSendMsg.style.color = '#f87171';
-            emailSendMsg.textContent = '⚠️ ' + ((res && res.message) || 'Failed to send email.');
+            confirmStatusMsg.style.color = '#ef4444';
+            confirmStatusMsg.textContent = res ? res.message : 'Error generating ticket pass.';
           }
         })
         .withFailureHandler(function(err) {
-          emailSendMsg.style.color = '#f87171';
-          emailSendMsg.textContent = '⚠️ System error sending email.';
+          confirmBtn.disabled = false;
+          confirmBtn.style.opacity = '1';
+          confirmBtnText.textContent = 'Confirm RSVP & Generate Ticket Pass 🎟️';
+          confirmBtnLoader.style.display = 'none';
+          confirmStatusMsg.style.color = '#ef4444';
+          confirmStatusMsg.textContent = 'Network exception generating ticket.';
         })
-        .sendEmailTicketToUser(ticketCode, memberName, email);
+        .confirmAndIssueTicket(payload);
+    }
+
+    function renderFinalTicketCard(res) {
+      const resultContainer = document.getElementById('resultContainer');
+      const total = res.totalAttending || (res.adults + res.children);
+      const emailBadge = res.emailSent 
+        ? `<div style="color:#10b981; font-size:0.88rem; font-weight:700; margin-top:8px;">✓ Ticket pass emailed automatically to ${escapeHtml(res.memberEmail)}</div>`
+        : (res.memberEmail ? `<div style="color:#fbbf24; font-size:0.82rem; margin-top:8px;">Logged for ${escapeHtml(res.memberEmail)}</div>` : '');
+
+      resultContainer.innerHTML = `
+        <div class="cultural-ticket-pass">
+          <div class="pass-header">
+            <div>
+              <div style="font-size:0.75rem; color:#fbbf24; font-weight:700; text-transform:uppercase;">Official Event Pass</div>
+              <div style="font-family:'Cinzel', serif; font-size:1.15rem; font-weight:800; color:#fff;">UTA BATHUKAMMA 2026</div>
+            </div>
+            <div class="pass-tag">VIP MEMBER PASS</div>
+          </div>
+
+          <div class="info-grid">
+            <div class="info-item full">
+              <span class="info-label">Member Name</span>
+              <span class="info-val gold">${escapeHtml(res.memberName)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Membership Category</span>
+              <span class="info-val">${escapeHtml(res.membershipType)}</span>
+            </div>
+            <div class="info-item">
+              <span class="info-label">Attending Headcount</span>
+              <span class="info-val gold" style="font-size:1rem;">${total} Guests (${res.adults} Adults, ${res.children} Children)</span>
+            </div>
+          </div>
+
+          <div class="ticket-barcode-box">
+            <div style="font-size:0.75rem; color:#cbd5e1; text-transform:uppercase;">Ticket Admission Code</div>
+            <div class="ticket-code-display">${escapeHtml(res.ticketCode)}</div>
+            <div style="color:#10b981; font-size:0.85rem; font-weight:700; margin-top:4px;">✓ CONFIRMED ADMISSION PASS • ADMIT ${total}</div>
+            ${emailBadge}
+          </div>
+        </div>
+      `;
     }
 
     /* Admin Modal Logic */
