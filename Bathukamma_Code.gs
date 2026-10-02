@@ -2,6 +2,18 @@
  * BATHUKAMMA 2026 EVENT - UTA MEMBERSHIP VERIFICATION, FAMILY RSVP LOGGING, DUAL EMAIL & ADMIN DASHBOARD
  */
 
+
+/**
+ * TEST FUNCTION: Run this in Apps Script Editor to debug any member search!
+ * Select 'testSearchMember' in the dropdown and click '▷ Run'.
+ */
+function testSearchMember() {
+  const testQuery = "Lifetime"; // Change to any test name, email, or phone number
+  Logger.log("=== TESTING MEMBER SEARCH FOR: '" + testQuery + "' ===");
+  const result = checkMembershipStatus(testQuery);
+  Logger.log("Result: " + JSON.stringify(result, null, 2));
+}
+
 function authorizeMailPermissionsTest() {
   const userEmail = Session.getActiveUser().getEmail() || BATHUKAMMA_CONFIG.utaAdminEmail;
   Logger.log("Authorizing MailApp for email: " + userEmail);
@@ -364,10 +376,12 @@ function checkMembershipStatus(inputQuery) {
   }
 }
 
+
 function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
   try {
     const tabName = sheet.getName();
-    const data = sheet.getDataRange().getValues();
+    // getDisplayValues retrieves exact visible text in Google Sheets
+    const data = sheet.getDataRange().getDisplayValues();
     if (data.length <= 1) return { found: false };
 
     const headers = data[0].map(h => String(h || '').toLowerCase().trim());
@@ -380,14 +394,14 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
     for (let c = 0; c < headers.length; c++) {
       const h = headers[c];
-      if (h.includes('name') || h.includes('member') || h.includes('primary')) nameCols.push(c);
+      if (h.includes('name') || h.includes('member') || h.includes('primary') || h.includes('person') || h.includes('first') || h.includes('last')) nameCols.push(c);
       if (h.includes('email') || h.includes('mail')) emailCols.push(c);
-      if (h.includes('phone') || h.includes('mobile') || h.includes('cell') || h.includes('contact') || h.includes('number')) phoneCols.push(c);
-      if (h.includes('type') || h.includes('membership') || h.includes('category') || h.includes('plan')) typeCols.push(c);
+      if (h.includes('phone') || h.includes('mobile') || h.includes('cell') || h.includes('contact') || h.includes('number') || h.includes('tel')) phoneCols.push(c);
+      if (h.includes('type') || h.includes('membership') || h.includes('category') || h.includes('plan') || h.includes('tier') || h.includes('status')) typeCols.push(c);
       if (h.includes('timestamp') || h.includes('date') || h.includes('time') || h.includes('year')) dateCols.push(c);
     }
 
-    const isLifetimeTab = tabName.toLowerCase().includes('life');
+    const isLifetimeTab = tabName.toLowerCase().includes('life') || tabName.toLowerCase().includes('lt');
 
     for (let r = 1; r < data.length; r++) {
       const row = data[r];
@@ -398,7 +412,9 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
         if (val) nameParts.push(val);
       });
       let fullNameStr = nameParts.join(' ').trim();
-      if (!fullNameStr && row.length > 0) fullNameStr = String(row[0] || '').trim();
+      if (!fullNameStr && row.length > 0) {
+        fullNameStr = String(row[0] || '').trim();
+      }
 
       let emailVal = '';
       emailCols.forEach(c => {
@@ -420,42 +436,50 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
       let dateVal = dateCols.length > 0 ? row[dateCols[0]] : '';
 
-      const rowText = row.map(cell => String(cell || '').toLowerCase()).join(' ');
+      // Entire row text stringified and lowered
+      const rowTextParts = row.map(cell => String(cell || '').toLowerCase().trim());
+      const rowText = rowTextParts.join(' ');
 
       const cleanEmail = emailVal.toLowerCase();
       const rowPhoneDigits = normalizePhoneDigits_(phoneVal || rowText);
 
       let isMatch = false;
 
-      // 1. Email match
-      if (cleanEmail && cleanQuery.includes('@') && cleanEmail === cleanQuery) {
-        isMatch = true;
-      } else if (cleanQuery.includes('@') && rowText.includes(cleanQuery)) {
-        isMatch = true;
+      // 1. Email match (exact or substring)
+      if (cleanQuery.includes('@')) {
+        if (cleanEmail && (cleanEmail === cleanQuery || cleanEmail.includes(cleanQuery) || cleanQuery.includes(cleanEmail))) {
+          isMatch = true;
+        } else if (rowText.includes(cleanQuery)) {
+          isMatch = true;
+        }
       }
       // 2. Phone digits match
       else if (phoneDigits && phoneDigits.length >= 7 && rowPhoneDigits.includes(phoneDigits)) {
         isMatch = true;
       }
-      // 3. Name match
-      else if (cleanQuery && fullNameStr && fullNameStr.toLowerCase().includes(cleanQuery)) {
-        isMatch = true;
-      } else if (cleanQuery && cleanQuery.length >= 3) {
-        const queryWords = cleanQuery.split(/\s+/).filter(w => w.length > 1);
-        if (queryWords.length > 0 && queryWords.every(w => rowText.includes(w))) {
+      // 3. Name or text match
+      else if (cleanQuery && cleanQuery.length >= 2) {
+        if (fullNameStr && fullNameStr.toLowerCase().includes(cleanQuery)) {
           isMatch = true;
+        } else {
+          // Check if all words in search query exist in the row text
+          const queryWords = cleanQuery.split(/\s+/).filter(w => w.length >= 2);
+          if (queryWords.length > 0 && queryWords.every(w => rowText.includes(w))) {
+            isMatch = true;
+          }
         }
       }
 
       if (isMatch) {
-        const isLifetimeRow = isLifetimeTab || typeVal.toLowerCase().includes('life') || rowText.includes('lifetime') || rowText.includes('life time');
+        const isLifetimeRow = isLifetimeTab || typeVal.toLowerCase().includes('life') || rowText.includes('lifetime') || rowText.includes('life time') || rowText.includes('lt member');
+        
         return {
           found: true,
-          memberName: fullNameStr || 'UTA Member',
-          email: emailVal,
+          memberName: fullNameStr || String(row[0] || 'UTA Member'),
+          email: emailVal || (cleanQuery.includes('@') ? cleanQuery : ''),
           phone: phoneVal,
           membershipType: typeVal || (isLifetimeRow ? 'UTA Lifetime Member' : `UTA ${tabName} Member`),
-          purchaseDate: dateVal instanceof Date ? formatDate_(dateVal) : String(dateVal || 'On File'),
+          purchaseDate: String(dateVal || 'On File'),
           isLifetime: isLifetimeRow
         };
       }
@@ -466,6 +490,7 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
   return { found: false };
 }
+
 
 function normalizePhoneDigits_(str) {
   const digits = String(str || '').replace(/\D/g, '');
