@@ -2,13 +2,8 @@
  * BATHUKAMMA 2026 EVENT - UTA MEMBERSHIP VERIFICATION, FAMILY RSVP LOGGING, DUAL EMAIL & ADMIN DASHBOARD
  */
 
-
-/**
- * TEST FUNCTION: Run this in Apps Script Editor to debug any member search!
- * Select 'testSearchMember' in the dropdown and click '▷ Run'.
- */
 function testSearchMember() {
-  const testQuery = "Lifetime"; // Change to any test name, email, or phone number
+  const testQuery = "Lifetime"; 
   Logger.log("=== TESTING MEMBER SEARCH FOR: '" + testQuery + "' ===");
   const result = checkMembershipStatus(testQuery);
   Logger.log("Result: " + JSON.stringify(result, null, 2));
@@ -270,7 +265,7 @@ function sendEmailTicketToUser(ticketCode, memberName, emailAddress, adultsCount
           <div style="color: #cbd5e1; font-size: 13px; text-transform: uppercase; letter-spacing: 1px;">Official Pass Code</div>
           <div style="color: #fbbf24; font-size: 28px; font-weight: bold; letter-spacing: 3px; margin: 8px 0;">${ticketCode}</div>
           <div style="color: #06d6a0; font-size: 14px; font-weight: bold; margin-top: 6px;">✓ Confirmed Member Ticket • ${catStr}</div>
-          <div style="color: #fbbf24; font-size: 15px; font-weight: 700; margin-top: 6px;">👨‍传播 Total Attending: ${total} Guests (${adults} Adults, ${children} Children)</div>
+          <div style="color: #fbbf24; font-size: 15px; font-weight: 700; margin-top: 6px;">👨‍👩‍👧‍👦 Total Attending: ${total} Guests (${adults} Adults, ${children} Children)</div>
         </div>
 
         <p><strong>Event:</strong> ${BATHUKAMMA_CONFIG.eventName}</p>
@@ -294,6 +289,87 @@ function sendEmailTicketToUser(ticketCode, memberName, emailAddress, adultsCount
   }
 }
 
+function getAdminDashboardData(adminPin) {
+  try {
+    const cleanPin = String(adminPin || '').trim();
+    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || 'UTA2026Admin')) {
+      return { success: false, message: 'Invalid Admin PIN. Access Denied.' };
+    }
+
+    if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+      return { success: false, message: 'Master Spreadsheet ID missing.' };
+    }
+
+    const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+    let logSheet = ss.getSheetByName(BATHUKAMMA_CONFIG.rsvpLogSheetName);
+
+    if (!logSheet) {
+      return { success: true, totalIssued: 0, totalAttending: 0, totalAdults: 0, totalChildren: 0, familyCount: 0, singleCount: 0, rows: [] };
+    }
+
+    const data = logSheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return { success: true, totalIssued: 0, totalAttending: 0, totalAdults: 0, totalChildren: 0, familyCount: 0, singleCount: 0, rows: [] };
+    }
+
+    let totalAttending = 0;
+    let totalAdults = 0;
+    let totalChildren = 0;
+    let familyCount = 0;
+    let singleCount = 0;
+
+    const rows = [];
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i];
+      
+      let adults = 1;
+      let children = 0;
+      let total = 1;
+
+      if (r.length >= 10) {
+        adults = parseInt(r[5] || 1, 10);
+        children = parseInt(r[6] || 0, 10);
+        total = parseInt(r[7] || (adults + children), 10);
+      } else {
+        total = 1;
+      }
+
+      totalAttending += total;
+      totalAdults += adults;
+      totalChildren += children;
+
+      const cat = String(r[4] || '');
+      if (isFamilyMembership_(cat)) familyCount++; else singleCount++;
+
+      rows.push({
+        timestamp: r[0] instanceof Date ? formatDate_(r[0]) : String(r[0] || ''),
+        ticketCode: String(r[1] || ''),
+        memberName: String(r[2] || ''),
+        identifier: String(r[3] || ''),
+        category: cat,
+        adults: adults,
+        children: children,
+        totalAttending: total,
+        status: String(r[r.length >= 10 ? 8 : 5] || 'CONFIRMED'),
+        email: String(r[r.length >= 10 ? 9 : 6] || '')
+      });
+    }
+
+    return {
+      success: true,
+      totalIssued: rows.length,
+      totalAttending: totalAttending,
+      totalAdults: totalAdults,
+      totalChildren: totalChildren,
+      familyCount: familyCount,
+      singleCount: singleCount,
+      rows: rows.reverse()
+    };
+  } catch (err) {
+    return { success: false, message: 'Error retrieving admin log: ' + err.toString() };
+  }
+}
+
 function checkMembershipStatus(inputQuery) {
   try {
     const rawQuery = String(inputQuery || '').trim();
@@ -313,12 +389,10 @@ function checkMembershipStatus(inputQuery) {
 
     let allMatches = [];
 
-    // Search through all tabs in master spreadsheet
     for (let s = 0; s < sheets.length; s++) {
       const sheet = sheets[s];
       const tabName = sheet.getName();
       
-      // Skip log sheet
       if (tabName.toLowerCase() === BATHUKAMMA_CONFIG.rsvpLogSheetName.toLowerCase()) continue;
 
       const match = searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery);
@@ -351,7 +425,6 @@ function checkMembershipStatus(inputQuery) {
 
         allMatches.push(matchResult);
 
-        // If active for 2026 (or Lifetime), return immediately as top priority
         if (isActiveFor2026) {
           return matchResult;
         }
@@ -376,11 +449,9 @@ function checkMembershipStatus(inputQuery) {
   }
 }
 
-
 function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
   try {
     const tabName = sheet.getName();
-    // getDisplayValues retrieves exact visible text in Google Sheets
     const data = sheet.getDataRange().getDisplayValues();
     if (data.length <= 1) return { found: false };
 
@@ -436,7 +507,6 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
       let dateVal = dateCols.length > 0 ? row[dateCols[0]] : '';
 
-      // Entire row text stringified and lowered
       const rowTextParts = row.map(cell => String(cell || '').toLowerCase().trim());
       const rowText = rowTextParts.join(' ');
 
@@ -445,7 +515,6 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
       let isMatch = false;
 
-      // 1. Email match (exact or substring)
       if (cleanQuery.includes('@')) {
         if (cleanEmail && (cleanEmail === cleanQuery || cleanEmail.includes(cleanQuery) || cleanQuery.includes(cleanEmail))) {
           isMatch = true;
@@ -453,16 +522,13 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
           isMatch = true;
         }
       }
-      // 2. Phone digits match
       else if (phoneDigits && phoneDigits.length >= 7 && rowPhoneDigits.includes(phoneDigits)) {
         isMatch = true;
       }
-      // 3. Name or text match
       else if (cleanQuery && cleanQuery.length >= 2) {
         if (fullNameStr && fullNameStr.toLowerCase().includes(cleanQuery)) {
           isMatch = true;
         } else {
-          // Check if all words in search query exist in the row text
           const queryWords = cleanQuery.split(/\s+/).filter(w => w.length >= 2);
           if (queryWords.length > 0 && queryWords.every(w => rowText.includes(w))) {
             isMatch = true;
@@ -490,7 +556,6 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
   return { found: false };
 }
-
 
 function normalizePhoneDigits_(str) {
   const digits = String(str || '').replace(/\D/g, '');
