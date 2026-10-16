@@ -63,8 +63,8 @@ function testZeffyWebhook() {
 }
 
 function importAllPastZeffyMembers() {
-  // Configured Zeffy API key
-  const myZeffyApiKey = "1756d01d-6988-44f4-9580-7bc65e22a482";
+  // Zeffy API key is stored privately in Apps Script: Project Settings -> Script Properties -> ZEFFY_API_KEY
+  const myZeffyApiKey = PropertiesService.getScriptProperties().getProperty("ZEFFY_API_KEY");
 
   if (!myZeffyApiKey || myZeffyApiKey.indexOf("PASTE_") === 0) {
     Logger.log("⚠️ Please provide a valid Zeffy API key.");
