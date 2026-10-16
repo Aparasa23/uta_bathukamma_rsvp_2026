@@ -742,8 +742,20 @@
             <div class="kpi-label">Total Tickets Claimed</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-val" style="color:#10b981;" id="kpiActiveCount">0</div>
-            <div class="kpi-label">Active 2026 Passes</div>
+            <div class="kpi-val" style="color:#10b981;" id="kpiAttendingCount">0</div>
+            <div class="kpi-label">Total Attending</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-val" id="kpiAdultsCount">0</div>
+            <div class="kpi-label">Adults</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-val" id="kpiChildrenCount">0</div>
+            <div class="kpi-label">Children</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-val" style="color:#60a5fa;" id="kpiCheckedInCount">0 / 0</div>
+            <div class="kpi-label">Checked In</div>
           </div>
         </div>
 
@@ -1017,8 +1029,18 @@
               </div>
             ` : ""}
 
+            ${!data.isFamily ? `
+              <div style="background:rgba(59,130,246,0.18); border:1.5px solid #3b82f6; border-radius:8px; padding:10px 14px; margin-bottom:14px; text-align:center; color:#93c5fd; font-weight:700; font-size:0.88rem;">
+                👤 Single / Student Membership: Admits 1 Person (Max: 1)
+              </div>
+            ` : `
+              <div style="background:rgba(16,185,129,0.18); border:1.5px solid #10b981; border-radius:8px; padding:10px 14px; margin-bottom:14px; text-align:center; color:#6ee7b7; font-weight:700; font-size:0.88rem;">
+                👨‍👩‍👧‍👦 Family Membership: Admits up to 8 family members (Max: 8)
+              </div>
+            `}
+
             <p style="text-align:center; color:#e2e8f0; font-size:0.92rem; margin-bottom:16px;">
-              Please select the number of family members attending Bathukamma 2026:
+              ${!data.isFamily ? "Confirm your attendance for Bathukamma 2026:" : "Please select the number of family members attending Bathukamma 2026 (Max 8):"}
             </p>
 
             <div class="counter-grid">
@@ -1026,22 +1048,24 @@
                 <div class="counter-label">Adults</div>
                 <div class="counter-subtext">(Ages 12+)</div>
                 <div class="counter-controls">
-                  <button type="button" class="cnt-btn" onclick="adjustCount('adults', -1)">-</button>
+                  <button type="button" class="cnt-btn" onclick="adjustCount('adults', -1)" ${!data.isFamily ? 'disabled style="opacity:0.35;cursor:not-allowed;"' : ''}>-</button>
                   <span class="cnt-val" id="adultsVal">${selectedAdults}</span>
-                  <button type="button" class="cnt-btn" onclick="adjustCount('adults', 1)">+</button>
+                  <button type="button" class="cnt-btn" onclick="adjustCount('adults', 1)" ${!data.isFamily ? 'disabled style="opacity:0.35;cursor:not-allowed;"' : ''}>+</button>
                 </div>
               </div>
 
-              <div class="counter-box">
+              <div class="counter-box" ${!data.isFamily ? 'style="opacity:0.4;"' : ''}>
                 <div class="counter-label">Children</div>
-                <div class="counter-subtext">(Under 12)</div>
+                <div class="counter-subtext">${!data.isFamily ? '(N/A for Single)' : '(Under 12)'}</div>
                 <div class="counter-controls">
-                  <button type="button" class="cnt-btn" onclick="adjustCount('children', -1)">-</button>
+                  <button type="button" class="cnt-btn" onclick="adjustCount('children', -1)" ${!data.isFamily ? 'disabled style="opacity:0.35;cursor:not-allowed;"' : ''}>-</button>
                   <span class="cnt-val" id="childrenVal">${selectedChildren}</span>
-                  <button type="button" class="cnt-btn" onclick="adjustCount('children', 1)">+</button>
+                  <button type="button" class="cnt-btn" onclick="adjustCount('children', 1)" ${!data.isFamily ? 'disabled style="opacity:0.35;cursor:not-allowed;"' : ''}>+</button>
                 </div>
               </div>
             </div>
+
+            <div id="headcountAlertMsg" style="text-align:center; font-size:0.84rem; min-height:18px; margin:6px 0;"></div>
 
             <div class="total-badge">
               Total Attending Headcount: <span class="total-num" id="totalAttendingVal">${selectedAdults + selectedChildren} Persons</span>
@@ -1108,13 +1132,48 @@
     }
 
     function adjustCount(type, delta) {
-      if (type === 'adults') {
-        selectedAdults = Math.max(1, selectedAdults + delta);
-        document.getElementById('adultsVal').textContent = selectedAdults;
-      } else if (type === 'children') {
-        selectedChildren = Math.max(0, selectedChildren + delta);
-        document.getElementById('childrenVal').textContent = selectedChildren;
+      const isFamily = currentActiveMemberData ? currentActiveMemberData.isFamily : true;
+      const maxTotal = isFamily ? 8 : 1;
+      const alertEl = document.getElementById('headcountAlertMsg');
+
+      if (!isFamily) {
+        selectedAdults = 1;
+        selectedChildren = 0;
+        if (alertEl) {
+          alertEl.style.color = '#93c5fd';
+          alertEl.textContent = 'Single / Student membership admits maximum 1 person.';
+        }
+        return;
       }
+
+      if (type === 'adults') {
+        const nextVal = selectedAdults + delta;
+        if (nextVal < 1) return;
+        if (nextVal + selectedChildren > maxTotal) {
+          if (alertEl) {
+            alertEl.style.color = '#fbbf24';
+            alertEl.textContent = `⚠️ Maximum limit of ${maxTotal} members allowed for Family Membership.`;
+          }
+          return;
+        }
+        selectedAdults = nextVal;
+        document.getElementById('adultsVal').textContent = selectedAdults;
+        if (alertEl) alertEl.textContent = '';
+      } else if (type === 'children') {
+        const nextVal = selectedChildren + delta;
+        if (nextVal < 0) return;
+        if (selectedAdults + nextVal > maxTotal) {
+          if (alertEl) {
+            alertEl.style.color = '#fbbf24';
+            alertEl.textContent = `⚠️ Maximum limit of ${maxTotal} members allowed for Family Membership.`;
+          }
+          return;
+        }
+        selectedChildren = nextVal;
+        document.getElementById('childrenVal').textContent = selectedChildren;
+        if (alertEl) alertEl.textContent = '';
+      }
+
       const total = selectedAdults + selectedChildren;
       document.getElementById('totalAttendingVal').textContent = total + (total === 1 ? ' Person' : ' Persons');
     }
@@ -1276,11 +1335,12 @@
       if (!res.success) return;
       currentAdminRows = res.rows || [];
       
-      document.getElementById('kpiTotalCount').textContent = res.totalIssued || 0;
-      document.getElementById('kpiAttendingCount').textContent = res.totalAttending || res.totalIssued || 0;
-      document.getElementById('kpiAdultsCount').textContent = res.totalAdults || 0;
-      document.getElementById('kpiChildrenCount').textContent = res.totalChildren || 0;
-      document.getElementById('kpiCheckedInCount').textContent = (res.totalCheckedInGuests || 0) + ' / ' + (res.totalAttending || 0);
+      const setKpi = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+      setKpi('kpiTotalCount', res.totalIssued || 0);
+      setKpi('kpiAttendingCount', res.totalAttending || res.totalIssued || 0);
+      setKpi('kpiAdultsCount', res.totalAdults || 0);
+      setKpi('kpiChildrenCount', res.totalChildren || 0);
+      setKpi('kpiCheckedInCount', (res.totalCheckedInGuests || 0) + ' / ' + (res.totalAttending || 0));
 
       populateAdminTable(currentAdminRows);
     }

@@ -4,6 +4,7 @@
 const BATHUKAMMA_CONFIG = {
   masterSpreadsheetId: "1D2HD41kUJ6BC3K6_66efwNP_tOi10PTvjEC8wQI6liw", // Master Member Spreadsheet ID
   rsvpLogSheetName: "Bathukamma_RSVP_Log",                           // RSVP Log Tab Name
+  zeffySheetName: "2026 Zeffy Members",                              // Zeffy Synced Members Tab
   adminPin: "UTA2026Admin",                                            // Admin Password
   utaAdminEmail: "utahteluguassociation@gmail.com",                  // Admin Notification Email
   buyTicketUrl: "https://forms.gle/rb621mkJ4FzXvSib7",
@@ -15,6 +16,366 @@ function testSearchMember() {
   const testInput = "parasaajaykumar@gmail.com";
   const result = checkMembershipStatus(testInput);
   Logger.log("Test Search Result: " + JSON.stringify(result, null, 2));
+}
+
+function testZeffyWebhook() {
+  const mockPayload = {
+    id: "evt_test_" + Date.now(),
+    type: "payment.completed",
+    data: {
+      id: "pay_test_" + Math.floor(100000 + Math.random() * 900000),
+      object: "payment",
+      status: "succeeded",
+      amount: 3000,
+      currency: "usd",
+      created: Math.floor(Date.now() / 1000),
+      campaign: {
+        name: "Utah Telugu Association Memberships 2026"
+      },
+      buyer: {
+        first_name: "Ajay",
+        last_name: "Parasa",
+        email: "parasaajaykumar@gmail.com",
+        phone: "8015551234",
+        address: {
+          line1: "123 Main Street",
+          city: "Salt Lake City",
+          state: "UT",
+          postal_code: "84101"
+        }
+      },
+      contact: {
+        first_name: "Ajay",
+        last_name: "Parasa",
+        email: "parasaajaykumar@gmail.com",
+        phone: "8015551234"
+      },
+      line_items: [
+        {
+          name: "Annual Membership - Family",
+          amount: 3000
+        }
+      ]
+    }
+  };
+  const res = handleZeffyWebhook(mockPayload);
+  Logger.log("testZeffyWebhook Output: " + res.getContent());
+}
+
+function importAllPastZeffyMembers() {
+  // Configured Zeffy API key
+  const myZeffyApiKey = "1756d01d-6988-44f4-9580-7bc65e22a482";
+
+  if (!myZeffyApiKey || myZeffyApiKey.indexOf("PASTE_") === 0) {
+    Logger.log("⚠️ Please provide a valid Zeffy API key.");
+    return;
+  }
+
+  Logger.log("Starting import of all past Zeffy members...");
+  const result = syncZeffyMembersViaApi(myZeffyApiKey, BATHUKAMMA_CONFIG.adminPin);
+  Logger.log("Import Result: " + JSON.stringify(result, null, 2));
+}
+
+/**
+ * Synchronizes the 13 verified Zeffy members directly into the Master Google Sheet
+ * with exact purchase dates, tier, amount paid, and Family capacity (max 8).
+ * Safely updates existing records without creating duplicates.
+ */
+function syncVerifiedZeffyMembersFromExport() {
+  const verifiedList = [
+    {
+      date: "7/18/2026 6:17 PM",
+      firstName: "Poornachandra",
+      lastName: "Thatrakallu",
+      fullName: "Poornachandra Thatrakallu",
+      email: "c.poorna@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260718-POORNA"
+    },
+    {
+      date: "7/18/2026 5:47 PM",
+      firstName: "Ravi kumar",
+      lastName: "Akkiraju",
+      fullName: "Ravi kumar Akkiraju",
+      email: "ravikumar_akkiraju@yahoo.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260718-RAVI"
+    },
+    {
+      date: "7/18/2026 4:17 PM",
+      firstName: "Satya",
+      lastName: "Donipudi",
+      fullName: "Satya Donipudi",
+      email: "donipudi.avinash@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260718-SATYA"
+    },
+    {
+      date: "7/18/2026 2:54 PM",
+      firstName: "Muneer",
+      lastName: "Shaik",
+      fullName: "Muneer Shaik",
+      email: "smdmuneer@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260718-MUNEER"
+    },
+    {
+      date: "7/17/2026 6:26 PM",
+      firstName: "Phani Kumar",
+      lastName: "Balusu",
+      fullName: "Phani Kumar Balusu",
+      email: "mailphanibalusu@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260717-PHANI"
+    },
+    {
+      date: "7/17/2026 3:13 PM",
+      firstName: "Lakshmikanth",
+      lastName: "Chinta",
+      fullName: "Lakshmikanth Chinta",
+      email: "chinta.laxman@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260717-LAXMAN"
+    },
+    {
+      date: "7/16/2026 9:29 PM",
+      firstName: "Sai",
+      lastName: "Karella",
+      fullName: "Sai Karella",
+      email: "sandy.prihar@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260716-SAI"
+    },
+    {
+      date: "7/16/2026 6:44 PM",
+      firstName: "Vikranth",
+      lastName: "Ceakala",
+      fullName: "Vikranth Ceakala",
+      email: "vikranthc@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260716-VIKRANTH"
+    },
+    {
+      date: "3/20/2026 6:48 PM",
+      firstName: "Vishnu",
+      lastName: "Bollu",
+      fullName: "Vishnu Bollu",
+      email: "vishnukiran.b@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260320-VISHNU"
+    },
+    {
+      date: "3/20/2026 5:01 PM",
+      firstName: "Anoop",
+      lastName: "Moparthi",
+      fullName: "Anoop Moparthi",
+      email: "anoopy2an@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260320-ANOOP"
+    },
+    {
+      date: "3/17/2026 4:41 PM",
+      firstName: "Ravi",
+      lastName: "Pallinti",
+      fullName: "Ravi Pallinti",
+      email: "ravipallinti@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260317-RAVIP"
+    },
+    {
+      date: "3/15/2026 9:18 PM",
+      firstName: "Kranthi",
+      lastName: "Swaroop Koonisetty",
+      fullName: "Kranthi Swaroop Koonisetty",
+      email: "kranthiswaroop6789@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260315-KRANTHI"
+    },
+    {
+      date: "3/14/2026 6:59 PM",
+      firstName: "Prasad",
+      lastName: "Thatrakallu",
+      fullName: "Prasad Thatrakallu",
+      email: "tvdjrv.prasad@gmail.com",
+      phone: "",
+      tier: "Annual Membership - Family",
+      maxAllowed: 8,
+      amount: "$30.00",
+      paymentId: "ZEFFY-20260314-PRASAD"
+    }
+  ];
+
+  if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+    Logger.log("❌ Master Spreadsheet ID is not configured.");
+    return { success: false, message: "Master Spreadsheet ID is not configured." };
+  }
+
+  const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+  const tabName = BATHUKAMMA_CONFIG.zeffySheetName || "2026 Zeffy Members";
+  let sheet = ss.getSheetByName(tabName);
+
+  if (!sheet) {
+    sheet = ss.insertSheet(tabName);
+    sheet.appendRow([
+      "Timestamp",
+      "Full Name",
+      "First Name",
+      "Last Name",
+      "Email",
+      "Phone",
+      "Membership Tier",
+      "Max Allowed",
+      "Amount Paid",
+      "Street Address",
+      "City",
+      "State",
+      "Zip Code",
+      "Zeffy Payment ID",
+      "Sync Status"
+    ]);
+    sheet.getRange(1, 1, 1, 15).setFontWeight("bold").setBackground("#059669").setFontColor("#ffffff");
+    sheet.setFrozenRows(1);
+  }
+
+  const values = sheet.getDataRange().getValues();
+  let updatedCount = 0;
+  let insertedCount = 0;
+
+  verifiedList.forEach(m => {
+    let existingRowIndex = -1;
+    const cleanEmail = m.email.toLowerCase().trim();
+
+    for (let r = 1; r < values.length; r++) {
+      const rowEmail = String(values[r][4] || "").toLowerCase().trim();
+      const rowPaymentId = String(values[r][13] || "").trim();
+      if ((cleanEmail && rowEmail === cleanEmail) || (m.paymentId && rowPaymentId === m.paymentId)) {
+        existingRowIndex = r + 1;
+        break;
+      }
+    }
+
+    const rowData = [
+      m.date,
+      m.fullName,
+      m.firstName,
+      m.lastName,
+      m.email,
+      m.phone,
+      m.tier,
+      m.maxAllowed,
+      m.amount,
+      "",
+      "",
+      "",
+      "",
+      m.paymentId,
+      "ACTIVE (SYNCED VIA ZEFFY)"
+    ];
+
+    if (existingRowIndex > 0) {
+      sheet.getRange(existingRowIndex, 1, 1, rowData.length).setValues([rowData]);
+      updatedCount++;
+      Logger.log(`Updated row ${existingRowIndex}: ${m.fullName} (${m.email}) with date ${m.date}`);
+    } else {
+      sheet.appendRow(rowData);
+      insertedCount++;
+      Logger.log(`Appended new row: ${m.fullName} (${m.email}) with date ${m.date}`);
+    }
+  });
+
+  Logger.log(`\n🎉 Sync Result: ${updatedCount} updated, ${insertedCount} newly inserted (${verifiedList.length} total verified members).`);
+  
+  // Run verification test immediately after sync
+  verifyAll13ZeffyMembers();
+
+  return {
+    success: true,
+    updated: updatedCount,
+    inserted: insertedCount,
+    total: verifiedList.length
+  };
+}
+
+/**
+ * Validates that all 13 Zeffy members can be found by checkMembershipStatus and are marked ACTIVE for 2026.
+ */
+function verifyAll13ZeffyMembers() {
+  const testEmails = [
+    "c.poorna@gmail.com",
+    "ravikumar_akkiraju@yahoo.com",
+    "donipudi.avinash@gmail.com",
+    "smdmuneer@gmail.com",
+    "mailphanibalusu@gmail.com",
+    "chinta.laxman@gmail.com",
+    "sandy.prihar@gmail.com",
+    "vikranthc@gmail.com",
+    "vishnukiran.b@gmail.com",
+    "anoopy2an@gmail.com",
+    "ravipallinti@gmail.com",
+    "kranthiswaroop6789@gmail.com",
+    "tvdjrv.prasad@gmail.com"
+  ];
+
+  Logger.log("\n=======================================================");
+  Logger.log("🧪 TESTING ACTIVE MEMBERSHIP VERIFICATION FOR ALL 13 MEMBERS");
+  Logger.log("=======================================================");
+
+  let verifiedCount = 0;
+  testEmails.forEach((email, idx) => {
+    const res = checkMembershipStatus(email);
+    if (res.found && res.active) {
+      verifiedCount++;
+      Logger.log(`[${idx + 1}/13] ✅ VERIFIED ACTIVE: ${email} -> ${res.memberName} (${res.membershipType}) | Cap: 8 | Status: ${res.statusMessage}`);
+    } else {
+      Logger.log(`[${idx + 1}/13] ❌ FAILED: ${email} -> ${JSON.stringify(res)}`);
+    }
+  });
+
+  Logger.log("=======================================================");
+  Logger.log(`🎯 FINAL VERIFICATION: ${verifiedCount} of ${testEmails.length} members are ACTIVE for 2026.`);
+  Logger.log("=======================================================\n");
+  
+  return {
+    totalChecked: testEmails.length,
+    activeCount: verifiedCount,
+    allVerified: verifiedCount === testEmails.length
+  };
 }
 
 function authorizeMailPermissionsTest() {
@@ -32,6 +393,23 @@ function authorizeMailPermissionsTest() {
 
 function doGet(e) {
   if (e && e.parameter && e.parameter.action) {
+    if (e.parameter.action === "testZeffy") {
+      return handleZeffyWebhook({
+        type: "payment.completed",
+        data: {
+          id: "TEST-ZEFFY-" + Math.floor(100000 + Math.random() * 900000),
+          amount: 5000,
+          campaign: { name: "UTA 2026 Annual Family Membership" },
+          buyer: {
+            first_name: "Test",
+            last_name: "Member",
+            email: "test.zeffy@example.com",
+            phone: "8015550199"
+          },
+          line_items: [{ name: "Family Membership 2026" }]
+        }
+      });
+    }
     return handleApiRequest(e.parameter);
   }
   return HtmlService.createHtmlOutputFromFile("Bathukamma_Index")
@@ -53,6 +431,15 @@ function doPost(e) {
   } else if (e && e.parameter) {
     params = e.parameter;
   }
+
+  // Detect Zeffy Webhook event automatically (Zeffy sends payment.completed JSON payload)
+  if (params.type === "payment.completed" || 
+      params.event === "payment.completed" || 
+      (params.data && (params.data.object === "payment" || params.data.status === "succeeded")) ||
+      params.action === "zeffyWebhook") {
+    return handleZeffyWebhook(params);
+  }
+
   return handleApiRequest(params);
 }
 
@@ -84,6 +471,12 @@ function handleApiRequest(params) {
       const children = parseInt(params.children || 0, 10);
       const category = params.category || "UTA Member";
       result = sendEmailTicketToUser(ticketCode, memberName, email, adults, children, category);
+    } else if (action === "zeffyWebhook") {
+      return handleZeffyWebhook(params);
+    } else if (action === "syncZeffyApi") {
+      const pin = params.pin || params.password || "";
+      const apiKey = params.apiKey || params.key || "";
+      result = syncZeffyMembersViaApi(apiKey, pin);
     }
   } catch (error) {
     result = { success: false, message: error.toString() };
@@ -161,6 +554,7 @@ function verifyMemberAndIssueRSVP(inputQuery) {
 
     if (res.found && res.active) {
       const isFamily = isFamilyMembership_(res.membershipType);
+      const maxCapacity = isFamily ? 8 : 1;
       const memberName = res.memberName || "UTA Member";
       const memberEmail = res.email || (inputQuery.includes("@") ? inputQuery : "");
 
@@ -173,6 +567,8 @@ function verifyMemberAndIssueRSVP(inputQuery) {
       }
 
       if (existingLog.found) {
+        const safeAdults = !isFamily ? 1 : Math.min(maxCapacity, existingLog.adults || 2);
+        const safeChildren = !isFamily ? 0 : Math.min(Math.max(0, maxCapacity - safeAdults), existingLog.children || 0);
         return {
           success: true,
           status: "ACTIVE",
@@ -184,8 +580,10 @@ function verifyMemberAndIssueRSVP(inputQuery) {
             memberId: res.memberId || ("UTA-2026-" + Math.floor(1000 + Math.random() * 9000)),
             membershipType: existingLog.category || res.membershipType || "UTA Member",
             isFamily: isFamily,
-            suggestedAdults: existingLog.adults || (isFamily ? 2 : 1),
-            suggestedChildren: existingLog.children || 0,
+            maxCapacity: maxCapacity,
+            maxAllowed: maxCapacity,
+            suggestedAdults: safeAdults,
+            suggestedChildren: safeChildren,
             alreadyIssued: true,
             existingTicketCode: existingLog.ticketCode,
             existingAdults: existingLog.adults,
@@ -207,6 +605,8 @@ function verifyMemberAndIssueRSVP(inputQuery) {
           memberId: res.memberId || ("UTA-2026-" + Math.floor(1000 + Math.random() * 9000)),
           membershipType: res.membershipType || "UTA Member",
           isFamily: isFamily,
+          maxCapacity: maxCapacity,
+          maxAllowed: maxCapacity,
           suggestedAdults: isFamily ? 2 : 1,
           suggestedChildren: 0,
           alreadyIssued: false,
@@ -252,8 +652,20 @@ function confirmAndIssueTicket(params) {
     const memberName = String(params.memberName || "UTA Member").trim();
     const membershipType = String(params.membershipType || "UTA Member").trim();
     const memberEmail = String(params.email || params.memberEmail || "").trim();
-    const adults = Math.max(1, parseInt(params.adults || 1, 10));
-    const children = Math.max(0, parseInt(params.children || 0, 10));
+    
+    // Enforce capacity limits: Family max 8, Single max 1
+    const isFamily = isFamilyMembership_(membershipType);
+    const maxCapacity = isFamily ? 8 : 1;
+    let adults = Math.max(1, parseInt(params.adults || 1, 10));
+    let children = Math.max(0, parseInt(params.children || 0, 10));
+
+    if (!isFamily) {
+      adults = 1;
+      children = 0;
+    } else if (adults + children > maxCapacity) {
+      adults = Math.min(adults, maxCapacity);
+      children = Math.min(children, Math.max(0, maxCapacity - adults));
+    }
     const totalAttending = adults + children;
 
     let ticketCode = "";
@@ -707,7 +1119,12 @@ function searchSheetTabForMember_(sheet, cleanQuery, phoneDigits, rawQuery) {
 
 function normalizePhoneDigits_(str) {
   if (!str) return "";
-  return String(str).replace(/\D/g, "");
+  let digits = String(str).replace(/\D/g, "");
+  // Normalize 11-digit numbers starting with US country code '1' to 10 digits
+  if (digits.length === 11 && digits.startsWith("1")) {
+    digits = digits.substring(1);
+  }
+  return digits;
 }
 
 function formatDate_(dateObj) {
@@ -811,5 +1228,256 @@ function checkInMemberTicket(ticketCode, adminPin) {
     return { success: false, message: `Ticket code "${cleanCode}" not found in system.` };
   } catch (err) {
     return { success: false, message: "Check-in error: " + err.toString() };
+  }
+}
+
+function handleZeffyWebhook(payload) {
+  try {
+    Logger.log("Zeffy Webhook Received: " + JSON.stringify(payload));
+    
+    // Extract payment data from payload (supports root or nested data wrapper)
+    const data = payload.data || payload;
+    const buyer = data.buyer || data.contact || {};
+    const contact = data.contact || data.buyer || {};
+    
+    // Payer details
+    const firstName = String(buyer.first_name || contact.first_name || data.first_name || "").trim();
+    const lastName = String(buyer.last_name || contact.last_name || data.last_name || "").trim();
+    let fullName = `${firstName} ${lastName}`.trim();
+    if (!fullName) {
+      fullName = String(buyer.name || contact.name || data.name || "UTA Member").trim();
+    }
+    
+    const email = String(buyer.email || contact.email || data.email || "").toLowerCase().trim();
+    
+    // Extract phone number from buyer, contact, or custom fields
+    let phone = String(buyer.phone || contact.phone || data.phone || "").trim();
+    if (!phone && data.custom_fields && Array.isArray(data.custom_fields)) {
+      for (let i = 0; i < data.custom_fields.length; i++) {
+        const cf = data.custom_fields[i];
+        const label = String(cf.label || cf.name || "").toLowerCase();
+        if (label.includes("phone") || label.includes("mobile") || label.includes("contact")) {
+          phone = String(cf.value || "");
+          break;
+        }
+      }
+    }
+    
+    // Extract address fields (Zeffy askForAddress form questions)
+    const addressObj = buyer.address || contact.address || data.address || {};
+    const street = String(addressObj.line1 || addressObj.address_line1 || addressObj.address || "").trim();
+    const city = String(addressObj.city || "").trim();
+    const state = String(addressObj.region || addressObj.state || "").trim();
+    const zip = String(addressObj.postal_code || addressObj.zip || "").trim();
+
+    // Membership category / tier & capacity rule (Family max 8, Single max 1)
+    let membershipType = "Annual Membership - Family";
+    const itemsList = data.items || data.line_items || [];
+    if (Array.isArray(itemsList) && itemsList.length > 0) {
+      const it = itemsList[0];
+      membershipType = String(it.rate_title || it.name || it.title || it.description || membershipType).trim();
+    } else if (data.campaign && (data.campaign.name || data.campaign.title)) {
+      membershipType = String(data.campaign.name || data.campaign.title).trim();
+    } else if (data.description) {
+      membershipType = String(data.description).trim();
+    }
+    
+    const isFamily = isFamilyMembership_(membershipType);
+    const maxCapacity = isFamily ? 8 : 1;
+
+    const amountVal = data.amount ? parseFloat(data.amount) : 0;
+    const formattedAmount = amountVal > 0 ? ("$" + (amountVal > 1000 ? (amountVal / 100).toFixed(2) : amountVal.toFixed(2))) : "$0.00";
+    const paymentId = String(data.id || payload.id || ("ZEFFY-" + Date.now())).trim();
+    
+    if (!BATHUKAMMA_CONFIG.masterSpreadsheetId) {
+      return ContentService.createTextOutput(JSON.stringify({
+        success: false,
+        message: "Master spreadsheet ID not configured."
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+    
+    const ss = SpreadsheetApp.openById(BATHUKAMMA_CONFIG.masterSpreadsheetId);
+    const tabName = BATHUKAMMA_CONFIG.zeffySheetName || "2026 Zeffy Members";
+    let sheet = ss.getSheetByName(tabName);
+    
+    // Automatically create tab if not present
+    if (!sheet) {
+      sheet = ss.insertSheet(tabName);
+      sheet.appendRow([
+        "Timestamp",
+        "Full Name",
+        "First Name",
+        "Last Name",
+        "Email",
+        "Phone",
+        "Membership Tier",
+        "Max Allowed",
+        "Amount Paid",
+        "Street Address",
+        "City",
+        "State",
+        "Zip Code",
+        "Zeffy Payment ID",
+        "Sync Status"
+      ]);
+      sheet.getRange(1, 1, 1, 15).setFontWeight("bold").setBackground("#059669").setFontColor("#ffffff");
+      sheet.setFrozenRows(1);
+    }
+    
+    // Check for existing record by Zeffy Payment ID or Email to prevent duplicates
+    const values = sheet.getDataRange().getValues();
+    let existingRowIndex = -1;
+    
+    for (let r = 1; r < values.length; r++) {
+      const rowPaymentId = String(values[r][13] || values[r][8] || "").trim();
+      const rowEmail = String(values[r][4] || "").toLowerCase().trim();
+      
+      if (paymentId && rowPaymentId === paymentId) {
+        existingRowIndex = r + 1;
+        break;
+      }
+      if (email && rowEmail && rowEmail === email) {
+        existingRowIndex = r + 1;
+        break;
+      }
+    }
+    
+    // Extract actual purchase/transaction timestamp from Zeffy data (fallback to current date if missing)
+    let purchaseDate = "";
+    if (data.created_at) {
+      purchaseDate = new Date(data.created_at);
+    } else if (data.created) {
+      const ts = Number(data.created);
+      purchaseDate = new Date(ts > 1e11 ? ts : ts * 1000);
+    } else if (data.payment_date) {
+      purchaseDate = new Date(data.payment_date);
+    } else if (data.date) {
+      purchaseDate = new Date(data.date);
+    } else {
+      purchaseDate = new Date();
+    }
+
+    const rowData = [
+      purchaseDate,
+      fullName,
+      firstName,
+      lastName,
+      email,
+      phone,
+      membershipType,
+      maxCapacity,
+      formattedAmount,
+      street,
+      city,
+      state,
+      zip,
+      paymentId,
+      "ACTIVE (SYNCED VIA ZEFFY)"
+    ];
+    
+    if (existingRowIndex > 0) {
+      sheet.getRange(existingRowIndex, 1, 1, rowData.length).setValues([rowData]);
+      Logger.log(`Updated existing Zeffy member at row ${existingRowIndex}: ${fullName}`);
+    } else {
+      sheet.appendRow(rowData);
+      Logger.log(`Appended new Zeffy member row: ${fullName}`);
+    }
+    
+    return ContentService.createTextOutput(JSON.stringify({
+      success: true,
+      message: `Member ${fullName} synced successfully to ${tabName}.`,
+      paymentId: paymentId
+    })).setMimeType(ContentService.MimeType.JSON);
+    
+  } catch(err) {
+    Logger.log("Error in handleZeffyWebhook: " + err.toString());
+    return ContentService.createTextOutput(JSON.stringify({
+      success: false,
+      message: "Webhook processing error: " + err.toString()
+    })).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function syncZeffyMembersViaApi(zeffyApiKey, adminPin) {
+  try {
+    const cleanPin = String(adminPin || "").trim();
+    if (cleanPin !== (BATHUKAMMA_CONFIG.adminPin || "UTA2026Admin")) {
+      return { success: false, message: "Invalid Admin PIN. Access Denied." };
+    }
+    
+    if (!zeffyApiKey) {
+      return { success: false, message: "Zeffy API key is required." };
+    }
+    
+    const url = "https://api.zeffy.com/api/v1/payments?limit=100";
+    const options = {
+      method: "get",
+      headers: {
+        "Authorization": "Bearer " + zeffyApiKey,
+        "Accept": "application/json"
+      },
+      muteHttpExceptions: true
+    };
+    
+    let response = UrlFetchApp.fetch(url, options);
+    let code = response.getResponseCode();
+    
+    // Auto-retry if rate limited (HTTP 429)
+    if (code === 429) {
+      Logger.log("⚠️ Zeffy API rate limit (429) encountered. Pausing for 65 seconds to auto-retry...");
+      Utilities.sleep(65000); // Wait 65s for the cooldown to reset
+      response = UrlFetchApp.fetch(url, options);
+      code = response.getResponseCode();
+      Logger.log("Retry response status code: " + code);
+    }
+    
+    if (code !== 200) {
+      return { success: false, message: "Zeffy API returned status " + code + ": " + response.getContentText() };
+    }
+    
+    const result = JSON.parse(response.getContentText());
+    const payments = result.data || result.payments || (Array.isArray(result) ? result : []);
+    
+    Logger.log(`Found ${payments.length} total payments from Zeffy API. Filtering and importing members...`);
+    
+    let syncedCount = 0;
+    let skippedCount = 0;
+    
+    payments.forEach(p => {
+      // Check if this payment belongs to the Membership campaign or has membership items
+      const campaignId = String(p.campaign_id || p.campaignId || (p.campaign && p.campaign.id) || "").trim();
+      const campaignTitle = String(p.campaign_title || (p.campaign && (p.campaign.name || p.campaign.title)) || "").toLowerCase();
+      const description = String(p.description || "").toLowerCase();
+      
+      const items = p.items || p.line_items || [];
+      const hasMembershipItem = Array.isArray(items) && items.some(it => {
+        const title = String(it.rate_title || it.name || it.title || it.description || "").toLowerCase();
+        return title.includes("membership") || title.includes("member");
+      });
+      
+      const isMembershipCampaign = (
+        campaignId === "d96d6590-31e7-4847-92cd-33502cee5953" ||
+        campaignTitle.includes("membership") ||
+        description.includes("membership") ||
+        hasMembershipItem
+      );
+      
+      // If recognized as membership or fallback if list is small
+      if (isMembershipCampaign || payments.length <= 15) {
+        const res = handleZeffyWebhook({ data: p });
+        if (res) syncedCount++;
+      } else {
+        skippedCount++;
+        Logger.log(`Skipped non-membership payment: ${p.id} (${campaignTitle || description})`);
+      }
+    });
+    
+    return {
+      success: true,
+      message: `Successfully processed ${syncedCount} membership records from Zeffy API (skipped ${skippedCount} non-membership records).`,
+      count: syncedCount
+    };
+  } catch(e) {
+    return { success: false, message: "Error syncing Zeffy API: " + e.toString() };
   }
 }
